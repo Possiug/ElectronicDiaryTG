@@ -3,7 +3,6 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Messa
 import sqlite3
 from dnevnik import Dnevnik
 from dnevnik_types import *
-from loyal_types import *
 import string
 import threading
 import random
@@ -20,6 +19,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+PASSWORD = os.getenv("PASSWORD")
 DB_FILENAME = 'ed.db'
 
 
@@ -879,7 +879,7 @@ async def AdminProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     sender = update.effective_sender
     data = msg.text.split('\n')
-    if(context.args[0] == 'P0osz!u6'):
+    if(context.args[0] == PASSWORD):
         r = "Результат:\n"
         k = 1
         for i in data[1:]:
