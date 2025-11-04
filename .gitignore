@@ -1,0 +1,4 @@
+files/*
+.env
+__pycache__/*
+ed.db
