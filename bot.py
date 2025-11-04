@@ -95,7 +95,6 @@ def PrepareDB():
                 type_shr INTEGER NOT NULL,
                 subject_shr INTEGER NOT NULL,
                 num INTEGER NOT NULL,
-                theme TEXT DEFAULT "",
                 homework INTEGER DEFAULT "",
                 date DATE CURRENT_DATE,
                 updated_date DATE CURRENT_DATE,
@@ -203,6 +202,7 @@ CLOSE_BUTTON = [InlineKeyboardButton(f"Закрыть", callback_data="delete_me
 CLOSE_RPMK = InlineKeyboardMarkup([CLOSE_BUTTON])
 CANCEL_BUTTON = [InlineKeyboardButton(f"Отмена", callback_data="cancel_me")]
 CANCEL_RPMK = InlineKeyboardMarkup([CANCEL_BUTTON])
+DEV_CLOSE_RPMK = InlineKeyboardMarkup([DEV_BUTTON, CLOSE_BUTTON])
 
 #endregion
 
@@ -313,8 +313,8 @@ async def UpdateData():
                                 cursor.execute("UPDATE lessons SET homework = ? WHERE school = ? AND id = ?", (i['homework'], school, lesson_id))
                         if(datetime.strptime(i['date'], '%Y-%m-%d').date() > datetime.now().date() - timedelta(7)):
                             asyncio.create_task(PostProcessLesson(website, login, password, school, k, j, lesson_id))
-                        cursor.execute("INSERT OR IGNORE INTO lessons (school, class_name, id, type_shr, subject_shr, num, theme, homework, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", 
-                                       (school, k, lesson_id, GetShortcutId(typ['name']), subject_shr, int(i['num']), i['theme'], i['homework'], i['date'])
+                        cursor.execute("INSERT OR IGNORE INTO lessons (school, class_name, id, type_shr, subject_shr, num, homework, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
+                                       (school, k, lesson_id, GetShortcutId(typ['name']), subject_shr, int(i['num']), i['homework'], i['date'])
                                        )
                         #print(f"\tAdded lesson {lesson_id}")
                     controls:list[dict[str, str]] = data['controls']
@@ -357,6 +357,7 @@ async def UpdateData():
                                 'shortname': control['short'],
                                 'cost': control['cost']
                             }
+                            i['text'] = 'pSS:f1nAl'
                         else:
                             typ = GetTypeFromId(control['type_id'], data['control_types'])
                         cursor.execute("INSERT OR IGNORE INTO marks (school, mark_id, mark_char, shortname, subject_shr, student_id, value, cost, text, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -431,7 +432,7 @@ async def EventProc():
                     print(f"Sending failed: {e}")
             elif (event_type == 'student_deleted'):
                 try: 
-                    await application.bot.send_message(chat_id=student_id, text=f"Вы были удалены из журнала!\n<blockquote>Школа: {school}\nКласс: {class_name}</blockquote>\nЕсли вы покинули ваш класс, то удачи вам)\nЕсли считаете это ошибкой, сообщиете разработчику", reply_markup=InlineKeyboardMarkup([DEV_BUTTON, CLOSE_BUTTON]))
+                    await application.bot.send_message(chat_id=student_id, text=f"Вы были удалены из журнала!\n<blockquote>Школа: {school}\nКласс: {class_name}</blockquote>\nЕсли вы покинули ваш класс, то удачи вам)\nЕсли считаете это ошибкой, сообщиете разработчику", reply_markup=DEV_CLOSE_RPMK)
                     time.sleep(0.5)
                 except Exception as e:
                     print(f"Sending failed: {e}")
@@ -441,7 +442,7 @@ async def EventProc():
             time.sleep(4)
     for k,v in msgs.items():
         try:
-            await application.bot.send_message(k, v, parse_mode='HTML', reply_markup=InlineKeyboardMarkup([DEV_BUTTON, CLOSE_BUTTON]))
+            await application.bot.send_message(k, v, parse_mode='HTML', reply_markup=DEV_CLOSE_RPMK)
         except Exception as e:
             print(f"SEND MSG EX: {e}")
         time.sleep(0.2)
@@ -501,7 +502,7 @@ async def StartCommandProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cursor.execute("SELECT file, file_name FROM files WHERE hashsum = ?", (file_hash,))
         file = cursor.fetchone()
         if(file == None):
-            await msg.reply_html(f"Файл не найден!",reply_markup=InlineKeyboardMarkup([DEV_BUTTON, CLOSE_BUTTON]))
+            await msg.reply_html(f"Файл не найден!",reply_markup=DEV_CLOSE_RPMK)
             return
         await chat.send_document(InputFile(open(file[0], 'rb').read(), filename=file[1]), caption=f"Файл", write_timeout=30, read_timeout= 30)
     elif(code.startswith("pea")):
@@ -509,7 +510,7 @@ async def StartCommandProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cursor.execute("SELECT id, alias, school, class_name, status FROM students WHERE invite_code = ?", (student_code,))
         student = cursor.fetchone()
         if(student == None):
-            await msg.reply_html(f"Ученик не найден!",reply_markup=InlineKeyboardMarkup([DEV_BUTTON, CLOSE_BUTTON]))
+            await msg.reply_html(f"Ученик не найден!",reply_markup=DEV_CLOSE_RPMK)
             return
         cursor.execute("SELECT id FROM dnevniks WHERE teacher_tid = ? AND school = ? AND class_name = ?", (sender.id, student[2], student[3]))
         journal = cursor.fetchone()
@@ -543,19 +544,19 @@ async def StartCommandProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if(student == None):
             await msg.reply_html(f"Вы не вошли в аккаунт, используйте /menu чтобы получить больше информации",reply_markup=CLOSE_RPMK)
             return
-        cursor.execute("SELECT mark_char, shortname, value, cost, text, date FROM marks WHERE student_id = ? AND subject_shr = ?", (student[0], subject_shr))
-        marks = cursor.fetchall()
-        text = f"Оценки по {GetShortcutText(subject_shr)}:\n"
-        m_sum = 0
-        m_count = 0
-        for i in marks:
-            text += f"{i[5]} - <b>{i[0]}</b>{f"({i[4]})" if i[4] else ""} - {i[1]} - кофф: {i[3]}\n"
-            if(i[2] != 0):
-                m_sum += i[2] * i[3]
-                m_count += i[3]
-        if(m_count != 0):
-            text += f"\n<i>Средний балл: {m_sum/m_count:.2f}</i>"
-        await chat.send_message(text, parse_mode='HTML', reply_markup=CLOSE_RPMK, disable_web_page_preview=True)
+        
+        await chat.send_message(GetSubjectMarks(student[0], student[1], student[2], subject_shr), parse_mode='HTML', reply_markup=CLOSE_RPMK, disable_web_page_preview=True)
+    elif(code.startswith("mtd")):
+        date_from = code[3:13]
+        date_to = code[13:23]
+        subject_shr = code[23:]
+        cursor.execute("SELECT student_id, school, class_name FROM students WHERE tid = ?", (sender.id,))
+        student = cursor.fetchone()
+        if(student == None):
+            await msg.reply_html(f"Вы не вошли в аккаунт, используйте /menu чтобы получить больше информации",reply_markup=CLOSE_RPMK)
+            return
+        
+        await chat.send_message(GetSubjectMarks(student[0], student[1], student[2], subject_shr, date_from, date_to), parse_mode='HTML', reply_markup=CLOSE_RPMK, disable_web_page_preview=True)
     await msg.delete()
 
 
@@ -625,26 +626,63 @@ def GetFullHomework(student_id, school, class_name):
         return text
     raise RuntimeError("Очень странно, но дз не вмещается в одно сообщение, а разработчик не придумал что с этим делать")
 
-def GetFullMarks(student_id, school, class_name):
-    cursor.execute("SELECT DISTINCT subject_shr FROM lessons WHERE school = ? AND class_name IN (SELECT group_name FROM class_linking WHERE student_id = ? UNION SELECT ?)", (school, student_id, class_name))
-    text = ""
-    m_sum = 0
-    m_count = 0
-    cursor.execute("SELECT date_from FROM periods WHERE date_from <= date('now') ORDER BY date_from DESC LIMIT 1")
+def GetCurrentTermBound(school:int, class_name:str) -> tuple[str, str]:
+    cursor.execute("SELECT date_from FROM periods WHERE school = ? AND class_name = ? AND date_from <= date('now') ORDER BY date_from DESC LIMIT 1", (school, class_name))
     date_from = cursor.fetchone()
     if (date_from is None):
-        return "<b>У нас проблема: не обнаружено ни одной четверти...\nПожалуйста обратитесь к разработчику (@possiug)</b>"
-    date_from = date_from[0]
-    cursor.execute("SELECT date_from FROM periods WHERE date_from >= date('now') ORDER BY date_from ASC LIMIT 1")
+        date_from = datetime(datetime.now().year, 0, 0).strftime("%Y-%m-%d")
+    else:
+        date_from = date_from[0]
+    cursor.execute("SELECT date_from FROM periods WHERE school = ? AND class_name = ? AND date_from >= date('now') ORDER BY date_from ASC LIMIT 1", (school, class_name))
     date_to = cursor.fetchone()
     if (date_to is None):
         date_to = datetime.now().strftime("%Y-%m-%d")
-    print(date_from)
-    print(date_to)
+    else:
+        date_to = date_to[0]
+    return date_from, date_to
+    
+def GetSubjectMarks(student_id, school, class_name, subject_shr, date_from = None, date_to = None) -> str:
+    if (date_from is None or date_to is None):
+        ndate_from, ndate_to = GetCurrentTermBound(school, class_name)
+        if (date_to is None):
+            date_to = ndate_to
+        if (date_from is None):
+            date_from = ndate_from
+    cursor.execute("SELECT mark_char, shortname, value, cost, text, date FROM marks WHERE student_id = ? AND text != 'pSS:f1nAl' AND subject_shr = ? AND date BETWEEN ? AND ?", (student_id, subject_shr, date_from, date_to))
+    marks = cursor.fetchall()
+    text = f"<i>Период: {date_from} {HTMLescape('->')} {date_to}</i>\nОценки по {GetShortcutText(subject_shr)}:\n"
+    m_sum = 0
+    m_count = 0
+    for i in marks:
+        text += f"{i[5]} - <b>{i[0]}</b>{f"({i[4]})" if i[4] else ""} - {i[1]} - кофф: {i[3]}\n"
+        if(i[2] != 0):
+            m_sum += i[2] * i[3]
+            m_count += i[3]
+    if(m_count != 0):
+        text += f"\n<i>Средний балл: {m_sum/m_count:.2f}</i>"
+    return text
+
+def GetFullMarks(student_id, school, class_name, date_from = None, date_to = None) -> str:
+    m_sum = 0
+    m_count = 0
+    term_depended = False
+    if (date_from is None or date_to is None):
+        ndate_from, ndate_to = GetCurrentTermBound(school, class_name)
+        if (date_to is None):
+            date_to = ndate_to
+        if (date_from is None):
+            date_from = ndate_from
+    else:
+        term_depended = True
+    text = f"<i>Оценки за период: {date_from} {HTMLescape("->")} {date_to}</i>\n"
+    cursor.execute("SELECT DISTINCT subject_shr FROM lessons WHERE school = ? AND class_name IN (SELECT group_name FROM class_linking WHERE student_id = ? UNION SELECT ?)", (school, student_id, class_name))
     for i in cursor.fetchall():
-        cursor.execute("SELECT mark_char, text, value, cost FROM marks WHERE student_id = ? AND subject_shr = ? WHERE date BETWEEN ? AND ? ORDER BY date ASC", (student_id, i[0], date_from, date_to))
+        cursor.execute("SELECT mark_char, text, value, cost FROM marks WHERE student_id = ? AND text != 'pSS:f1nAl' AND subject_shr = ? AND date BETWEEN ? AND ? ORDER BY date ASC", (student_id, i[0], date_from, date_to))
         sql_answer = cursor.fetchall()
-        text+=f"<b><a href=\"{GetStartLink(f"qmrks{i[0]}")}\">{GetShortcutText(i[0])}</a></b>: "
+        link = GetStartLink(f"qmrks{i[0]}")
+        if (term_depended):
+            link = GetStartLink(f"qmtd{date_from}{date_to}{i[0]}")
+        text+=f"<b><a href=\"{link}\">{GetShortcutText(i[0])}</a></b>: "
         
         text += ', '.join([f"{j}{f" ({k})" if k != "" else ""}" for j,k,*q in sql_answer])
         text += "\n"
@@ -726,7 +764,7 @@ async def ProfileProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if(student == None):
         await msg.reply_html(f"Вы еще не привязаны к электронному дневнику! Попросите у вашего учителя ссылку для привязки!", reply_markup=CLOSE_RPMK)
         return
-    await msg.reply_html(f"Ученик:<blockquote>Школа: {student[2]}\nКласс: {student[3]}\nФамилия имя: {student[4]}</blockquote>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Обновить имя",callback_data=f"update_fio_s")], [InlineKeyboardButton("Журнал", callback_data="journal_s")], [InlineKeyboardButton("Выйти",callback_data="logout_s")], CLOSE_BUTTON]))
+    await msg.reply_html(f"Ученик:<blockquote>Школа: {student[2]}\nКласс: {student[3]}\nФамилия имя: {student[4]}</blockquote>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Обновить имя",callback_data=f"update_fio_s")], [InlineKeyboardButton("Выйти",callback_data="logout_s")], CLOSE_BUTTON]))
     
 async def StatusProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -765,7 +803,7 @@ async def MarksCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if(student == None):
         await msg.reply_html(f"Вы еще не привязаны к электронному дневнику! Попросите у вашего учителя ссылку для привязки!", reply_markup=CLOSE_RPMK)
         return
-    await chat.send_message(GetFullMarks(*student), parse_mode='HTML', disable_web_page_preview=True, reply_markup=CLOSE_RPMK)
+    await chat.send_message(GetFullMarks(*student), parse_mode='HTML', disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(text="Другие периоды", callback_data="show_choose_term_s")], CLOSE_BUTTON]))
 
 
 async def MsgProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1102,11 +1140,11 @@ async def RegenLinkProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, ch
                    (journal[0], journal[1], sid))
     student = cursor.fetchone()
     if (student is None):
-        await msg.edit_text("Мы не нашли такого ученика у вас... Если считаете это ошибкой, сообщите разработчику", reply_markup=InlineKeyboardMarkup([DEV_BUTTON, CLOSE_BUTTON]))
+        await msg.edit_text("Мы не нашли такого ученика у вас... Если считаете это ошибкой, сообщите разработчику", reply_markup=DEV_CLOSE_RPMK)
         return
     new_code = GetStudentCode(student[0])
     if (student[1] != 0):
-        try: await c.bot.send_message(chat_id=student[1], text="Ваш учитель завершил вашу сессию, попросите у него новую ссылку для авторизации!\nЕсли считаете это ошибкой, сообщиете разработчику", reply_markup=InlineKeyboardMarkup([DEV_BUTTON, CLOSE_BUTTON]))
+        try: await c.bot.send_message(chat_id=student[1], text="Ваш учитель завершил вашу сессию, попросите у него новую ссылку для авторизации!\nЕсли считаете это ошибкой, сообщиете разработчику", reply_markup=DEV_CLOSE_RPMK)
         except: pass
     cursor.execute("UPDATE students SET invite_code = ?, tid = 0 WHERE id = ?",
                    (new_code, sid))
@@ -1145,7 +1183,7 @@ async def DeleteStudentProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message
                    (journal[0], journal[1], sid))
     student = cursor.fetchone()
     if (student is None):
-        await msg.edit_text("Мы не нашли такого ученика у вас... Если считаете это ошибкой, сообщите разработчику", reply_markup=InlineKeyboardMarkup([DEV_BUTTON, CLOSE_BUTTON]))
+        await msg.edit_text("Мы не нашли такого ученика у вас... Если считаете это ошибкой, сообщите разработчику", reply_markup=DEV_CLOSE_RPMK)
         return
     cursor.execute("DELETE FROM students WHERE id = ?", (sid,))
     await msg.edit_text("Ученик был удален... Удачи ему/ей!", reply_markup=CLOSE_RPMK)
@@ -1260,24 +1298,54 @@ async def UpdateFioSProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, c
                     await msg.reply_html(f"Ваше имя обновлено!\n<blockquote>Старое имя: {student[4]}\nНовое имя: {i['alias']}</blockquote>",reply_markup=CLOSE_RPMK)
                     return
 
-async def JournalStudentProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
-    await msg.reply_html(f"<b>Журнал</b>:\n<i>Учитывайте, что данные обновляются ~каждый час</i>",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(f"Посмотреть дз", callback_data="see_lessons_s")], [InlineKeyboardButton("Посмотреть оценки", callback_data="see_marks_s")], CANCEL_BUTTON]))
-
-async def SeeLessonsProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
-    cursor.execute("SELECT student_id, school, class_name FROM students WHERE tid = ?", (sender.id, ))
+async def ShowChooseTermProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
+    cursor.execute("SELECT school, class_name FROM students WHERE tid = ?", (sender.id,))
     student = cursor.fetchone()
-    if(student == None):
+    if(student is None):
         await msg.edit_text("Вы не вошли как ученик, чтобы войти вам необходимо перейти по ссылке, которую отправил вам учитель!\n<i>Если возникают сложности, обращайтесь к разработчику!</i>", parse_mode='HTML', reply_markup=DEV_RPMK)
         return
-    await chat.send_message(GetFullHomework(*student), parse_mode='HTML', disable_web_page_preview=True, reply_markup=CLOSE_RPMK)
+    cursor.execute("SELECT date_from, date_to, number FROM periods WHERE school = ? AND class_name = ?", (student[0], student[1]))
+    buttons = []
+    text = "Доступные периоды:\n"
+    for i in cursor.fetchall():
+        text += f"{i[2]} период: {i[0]} -> {i[1]}\n"
+        buttons.append([InlineKeyboardButton(text=f"{i[2]} период", callback_data=f"marks_by_term_s:{i[2]}")])
+    buttons.append([InlineKeyboardButton(text="Итоговые", callback_data="show_final_marks_s")])
+    buttons.append(CLOSE_BUTTON)
+    await msg.edit_text(text=text, reply_markup=InlineKeyboardMarkup(buttons))
 
-async def SeeMarksProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
-    cursor.execute("SELECT student_id, school, class_name FROM students WHERE tid = ?", (sender.id, ))
+async def MarksByTermProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
+    term = int(args[0])
+    cursor.execute("SELECT student_id, school, class_name FROM students WHERE tid = ?", (sender.id,))
     student = cursor.fetchone()
-    if(student == None):
+    if(student is None):
         await msg.edit_text("Вы не вошли как ученик, чтобы войти вам необходимо перейти по ссылке, которую отправил вам учитель!\n<i>Если возникают сложности, обращайтесь к разработчику!</i>", parse_mode='HTML', reply_markup=DEV_RPMK)
         return
-    await chat.send_message(GetFullMarks(*student), parse_mode='HTML', reply_markup=CLOSE_RPMK)
+    cursor.execute("SELECT date_from, date_to FROM periods WHERE school = ? AND class_name = ? AND number = ?", (student[1], student[2], term))
+    term = cursor.fetchone()
+    if (term is None):
+        await msg.edit_text("Период не найден!\nПопробуйте снова или обратитесь к разработчику", reply_markup=DEV_CLOSE_RPMK)
+        return
+    await chat.send_message(GetFullMarks(*student, date_from=term[0], date_to=term[1]), parse_mode='HTML', disable_web_page_preview=True, reply_markup=CLOSE_RPMK)
+    
+
+async def ShowFinalMarks(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
+    cursor.execute("SELECT student_id, school, class_name FROM students WHERE tid = ?", (sender.id,))
+    student = cursor.fetchone()
+    if(student is None):
+        await msg.edit_text("Вы не вошли как ученик, чтобы войти вам необходимо перейти по ссылке, которую отправил вам учитель!\n<i>Если возникают сложности, обращайтесь к разработчику!</i>", parse_mode='HTML', reply_markup=DEV_RPMK)
+        return
+    text = f"<i>Итоговые оценки:</i>\n"
+    cursor.execute("SELECT DISTINCT subject_shr FROM lessons WHERE school = ? AND class_name IN (SELECT group_name FROM class_linking WHERE student_id = ? UNION SELECT ?)", (student[1], student[0], student[2]))
+    for i in cursor.fetchall():
+        cursor.execute("SELECT mark_char, text, value, cost FROM marks WHERE student_id = ? AND text = 'pSS:f1nAl' AND subject_shr = ? ORDER BY date ASC", (student[0], i[0]))
+        sql_answer = cursor.fetchall()
+        # link = GetStartLink(f"qmrks{i[0]}")
+        text+=f"<b><a href='{GetStartLink(f"qmrks{i[0]}")}'>{GetShortcutText(i[0])}</a></b>: "
+        text += ', '.join([f"{j}" for j,*q in sql_answer])
+        text += "\n"
+    await msg.reply_html(text=text, reply_markup=CLOSE_RPMK, disable_web_page_preview=True)
+
 
 async def LogoutStudent(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
     cursor.execute("SELECT status, tid, student_id, alias FROM students WHERE tid = ?", (sender.id,))
@@ -1289,7 +1357,7 @@ async def LogoutStudent(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, ch
     await msg.edit_text(f"{student[3]}, Вы вышли из аккаунта!")
 
 async def NotMeStudentProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
-    await msg.edit_text(f"Сообщите учителю, что вам отправили не ту ссылку! Или сообщите разработчику", reply_markup=InlineKeyboardMarkup([DEV_BUTTON, CLOSE_BUTTON]))
+    await msg.edit_text(f"Сообщите учителю, что вам отправили не ту ссылку! Или сообщите разработчику", reply_markup=DEV_CLOSE_RPMK)
 
 
 
@@ -1311,7 +1379,7 @@ async def ErrorProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"Error occured: {error} while proccessing message({msg})")
     if(msg != None):
         try:
-            await msg.reply_html(f"<b>Произошла непредвиденная ошибка!</b>\n\nСообщите об этом инциденте разработчику: @possiug\n\n<tg-spoiler><i>Мы надеемся, что все будет хорошо</i></tg-spoiler>\n\nИнформация об ошибке:\n<tg-spoiler><i>{HTMLescape(error.__str__())}</i></tg-spoiler>", reply_markup=InlineKeyboardMarkup([DEV_BUTTON, CLOSE_BUTTON]))
+            await msg.reply_html(f"<b>Произошла непредвиденная ошибка!</b>\n\nСообщите об этом инциденте разработчику: @possiug\n\n<tg-spoiler><i>Мы надеемся, что все будет хорошо</i></tg-spoiler>\n\nИнформация об ошибке:\n<tg-spoiler><i>{HTMLescape(error.__str__())}</i></tg-spoiler>", reply_markup=DEV_CLOSE_RPMK)
         except Exception as e:
             print(f"cannnot send error msg: {e}")
 
@@ -1338,16 +1406,16 @@ CLB_COMMANDS = {
     'its_me_s': MeStudentProc,
     'itsnt_me_s': NotMeStudentProc,
     'update_fio_s': UpdateFioSProc,
-    'journal_s': JournalStudentProc,
-    'see_lessons_s': SeeLessonsProc,
-    'see_marks_s': SeeMarksProc,
     'logout_s': LogoutStudent,
     'delete_me': DeleteMeProc,
     'cancel_me': CancelMeProc,
     'menu': Menu,
     'regenlink_t': RegenLinkProc,
     'predelete_student': PreDeleteStudentProc,
-    'delete_student': DeleteStudentProc
+    'delete_student': DeleteStudentProc,
+    'show_choose_term_s': ShowChooseTermProc,
+    'marks_by_term_s': MarksByTermProc,
+    'show_final_marks_s': ShowFinalMarks
 }
 #endregion
 
