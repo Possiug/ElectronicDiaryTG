@@ -38,6 +38,7 @@ class UStates:
     AWAIT_CHOOSE_ROLE = "aw_choose_role"
     AWAIT_ADMIN_PASS = "aw_admin_pass"
     AWAIT_EDIT_WEB_T = "aw_edit_web_t"
+    AWAIT_EDIT_LP_T = "aw_edit_lp_t"
     UNKNOWN = "unknown"
 
 
@@ -891,6 +892,32 @@ async def MsgProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.delete()
         await m.edit_text(f"Успешно установлен новый адрес журнала:\n{web_site}", reply_markup=CLOSE_RPMK)
         users_state[sender.id] = UStates.UNKNOWN
+    elif(state == UStates.AWAIT_EDIT_LP_T):
+        lp = msg.text.split('\n')
+        if (len(lp) != 2): 
+            await msg.reply_html(f"<b>Неверный формат!</b>\nВаше сообщение должно содержать 2 строки:\n 1) логин\n 2) пароль\n\nПопробуйте еще раз:", reply_markup=CANCEL_RPMK)
+            return
+        login = lp[0]
+        password = lp[1]
+        m = await msg.reply_html(f"Проверка данных перед внесения изменений...\nЭто может занять некоторое время...")
+        cursor.execute("SELECT website FROM dnevniks WHERE id = ?", (user_d['journal_id'],))
+        host = cursor.fetchone()[0]
+        try:
+            d = Dnevnik(host)
+            d.Login(login, password)
+        except LoginError:
+            await m.edit_text(f"Не удалось войти с предоставленными данными\n\n<i>при возникновении трудностей, обратитесь к разработчику!</i>\n\nВведите <u><b>новый логин и пароль</b></u>:", parse_mode='HTML', reply_markup=InlineKeyboardButton(CANCEL_BUTTON, DEV_BUTTON))
+            return
+        except Exception as e:
+            print(f"Error in new lp: {e}")
+            await m.edit_text(f"Кажется сайт ЭД недоступен или произошла ошибка, попробуйте снова позже или сообщите разработчику\n\nВведите <u><b>новый логин и пароль</b></u>:", parse_mode='HTML', reply_markup=InlineKeyboardButton(CANCEL_BUTTON, DEV_BUTTON))
+            return
+        cursor.execute("UPDATE dnevniks SET login = ?, password = ? WHERE teacher_tid = ? AND id = ?", (login, password, sender.id, user_d['journal_id']))
+        await msg.delete()
+        await m.edit_text(f"Успешно установлен новык логин и пароль:\n<code>{login}:{password}</code>", reply_markup=CLOSE_RPMK)
+        users_state[sender.id] = UStates.UNKNOWN
+        
+            
     elif(state == UStates.AWAIT_LOGIN_T):
         login = msg.text
         user_d['login'] = login
@@ -1087,7 +1114,7 @@ async def EditJournalProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, 
     if(journal == None):
         await msg.edit_text("Такой журнал не найден у вас, попробуйте еще раз и убедитесь, что журнал все еще принадлежит вам", reply_markup=CLOSE_RPMK)
         return
-    await msg.edit_text(f"Журнал:<blockquote>Школа: {journal[1]}\nКласс: {journal[2]}\nВебсайт: {journal[3]}\nЛогин: {journal[4]}\nПароль: {journal[5]}{f"\n<b>Ваш журнал деактивирован из-за ошибки авторизации, попробуйте заного ввести логин и пароль или вебсайт! <u>(ВАШИ УЧЕНИКИ НЕ МОГУТ СМОТРЕТЬ ОЦЕНКИ И ДЗ)</u></b>" if not journal[6] else ""}</blockquote>", parse_mode='HTML', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Управление доступом", callback_data=f"manage_j_access:{jid}")],[InlineKeyboardButton("Изменить вебсайт", callback_data=f"edit_dnevnik_web:{journal[0]}")],[InlineKeyboardButton("Изменить логин и пароль", callback_data="edit_dnevnik_lp")], [InlineKeyboardButton("Удалить журнал", callback_data=f"predelete_cd:{journal[0]}")], CLOSE_BUTTON]))
+    await msg.edit_text(f"Журнал:<blockquote>Школа: {journal[1]}\nКласс: {journal[2]}\nВебсайт: {journal[3]}\nЛогин: {journal[4]}\nПароль: {journal[5]}{f"\n<b>Ваш журнал деактивирован из-за ошибки авторизации, попробуйте заного ввести логин и пароль или вебсайт! <u>(ВАШИ УЧЕНИКИ НЕ МОГУТ СМОТРЕТЬ ОЦЕНКИ И ДЗ)</u></b>" if not journal[6] else ""}</blockquote>", parse_mode='HTML', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Управление доступом", callback_data=f"manage_j_access:{jid}")],[InlineKeyboardButton("Изменить вебсайт", callback_data=f"edit_dnevnik_web:{journal[0]}")],[InlineKeyboardButton("Изменить логин и пароль", callback_data=f"edit_dnevnik_lp:{journal[0]}")], [InlineKeyboardButton("Удалить журнал", callback_data=f"predelete_cd:{journal[0]}")], CLOSE_BUTTON]))
     users_state[sender.id] = UStates.UNKNOWN
 
 async def EditJournalAccessProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
@@ -1216,6 +1243,19 @@ async def EditJournalWebProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Messag
     await msg.reply_html(f"Вы собираетесь изменить сайт Параграфа для журнала\n Школа: {journal[1]}\n Класс: {journal[2]}\n Старый вебсайт: {journal[3]}\n\nВведите <u><b>новый веб адрес журнала</b></u>:", reply_markup=CANCEL_RPMK)
     users_state[sender.id] = UStates.AWAIT_EDIT_WEB_T
     users_data[sender.id] = {"journal_id":jid}
+
+async def EditJournalLPProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
+    jid = int(args[0])
+    cursor.execute("SELECT id, school, class_name, website, login, password FROM dnevniks WHERE teacher_tid = ? AND id = ?", (sender.id, jid))
+    journal = cursor.fetchone()
+    if(journal == None):
+        await msg.edit_text("Такой журнал не найден у вас, попробуйте еще раз и убедитесь, что журнал все еще принадлежит вам", reply_markup=CLOSE_RPMK)
+        return
+        
+    await msg.reply_html(f"Вы собираетесь изменить сайт Параграфа для журнала\n<blockquote>Школа: {journal[1]}\nКласс: {journal[2]}\nСтарый логин: {journal[4]}\nСтарый пароль: {journal[5]}</blockquote>\n\nВведите <u><b>новый логин пароль</b></u> в сообщении в первой строке - логин, во второй - пароль:", reply_markup=CANCEL_RPMK)
+    users_state[sender.id] = UStates.AWAIT_EDIT_LP_T
+    users_data[sender.id] = {"journal_id":jid}
+
 
 async def PreDeleteJournal(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
     jid = int(args[0])
@@ -1398,6 +1438,7 @@ CLB_COMMANDS = {
     'edit_journals_t': EditJournalsProc,
     'edit_journal_t': EditJournalProc,
     'edit_dnevnik_web': EditJournalWebProc,
+    'edit_dnevnik_lp': EditJournalLPProc,
     'manage_j_access': EditJournalAccessProc,
     'showLNK': ShowClassLinksProc,
     'resetLNK': ResetClassLinksProc,
