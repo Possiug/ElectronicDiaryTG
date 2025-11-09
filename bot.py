@@ -756,7 +756,9 @@ async def StartProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             await msg.reply_html(f"Добро пожаловать!<blockquote>Школа: {invite[0]}\nКласс: {invite[1]}\nФамилия имя: {invite[2]}</blockquote>\nЭто вы?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Да",callback_data=f"its_me_s:{code}")], [InlineKeyboardButton("Нет", callback_data="itsnt_me_s")]]))
         return
-    await msg.reply_html("Добро пожаловать в бота!\nБот предоставляет доступ к вашим оценкам и дз без госуслуг и сложной авторизации, прямо в телеграмме\nЧтобы начать, выберите свою роль:",reply_markup=ROLES_RPMK)
+    await msg.reply_html("Добро пожаловать в бота!\nБот предоставляет доступ к вашим оценкам и дз без госуслуг и сложной авторизации, прямо в телеграмме\n\nУ бота открытый исходный <a href='https://github.com/Possiug/ElectronicDiaryTG'>код</a>!\nБуду раз звездочкам на гитхабе :)\n\nСоздано @possiug для всех\nАвтор идеи: @isichmelili\nАватарка найдена: @MauzeS_paw\nЧтобы начать, выберите свою роль:",reply_markup=ROLES_RPMK)
+
+
 async def ProfileProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     sender = update.effective_sender
