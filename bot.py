@@ -273,11 +273,13 @@ async def UpdateData():
                     cursor.execute("SELECT COUNT(*) FROM periods WHERE school = ? AND class_name = ?",
                                    (school, class_name))
                     pcount = cursor.fetchone()[0]
+                    print("\tAdding periods...")
                     if (pcount != len(periods)):
                         for n, i in enumerate(periods, start=1):
                             cursor.execute("INSERT OR IGNORE INTO periods (school, class_name, date_from, date_to, number) VALUES (?, ?, ?, ?, ?)", 
                                            (school, class_name, i['date_from'], i['date_to'], n))
                     excluded = set()
+                    print("\tExcluding students...")
                     for i in members:
                         movements = i['movements'][-1]
                         if (movements['date_out'] != ''):
@@ -296,7 +298,7 @@ async def UpdateData():
                                             (school, class_name, i['id'], subject_shr, k)
                                            )
                     
-
+                    print("\tProcessing lessons...")
                     lessons:list[dict] = data['lessons']
                     lsndate = {}
                     for i in lessons:
@@ -304,7 +306,7 @@ async def UpdateData():
                         lsndate[lesson_id] = i['date']
                         sus = i['lt'] # check for final lesson and V-type lesson
                         if (sus != ''):
-                            print('skipping')
+                            print('\t\tskipping')
                             continue
                         typ = GetTypeFromId(i['lesson_type'], data['lesson_types'])
                         cursor.execute("SELECT homework FROM lessons WHERE school = ? AND id = ?", (school, lesson_id))
@@ -318,6 +320,7 @@ async def UpdateData():
                                        (school, k, lesson_id, GetShortcutId(typ['name']), subject_shr, int(i['num']), i['homework'], i['date'])
                                        )
                         #print(f"\tAdded lesson {lesson_id}")
+                    print("\tProcessing controls...")
                     controls:list[dict[str, str]] = data['controls']
                     ctrls:dict[str, dict[str, str]] = {}
                     for i in controls:
@@ -328,6 +331,7 @@ async def UpdateData():
                             'text': i['text'],
                             'short': i.get('short', '')
                         }
+                    print("\tPhantoming marks...")
                     marks = data['marks']
                     real_marks = set()
                     cursor.execute("SELECT mark_id FROM marks WHERE school = ? AND subject_shr = ? AND student_id IN (SELECT student_id FROM students WHERE school = ? AND class_name = ? UNION SELECT student_id FROM class_linking WHERE school = ? AND group_name = ? AND subject_shr = ?)", 
@@ -335,7 +339,7 @@ async def UpdateData():
                                    )
                     phantom_marks:set[int] = set([i[0] for i in cursor.fetchall()])
                     mark_type_cache = {}
-                    
+                    print("\tProcessing mark types...")
                     for i in data['mark_types']:
                         for j in i['marks']:
                             mark_type_cache[j['id']] = {
@@ -344,6 +348,13 @@ async def UpdateData():
                                 'cost': float(j['cost']),
                                 'key': j['key']
                             }
+                    mark_type_cache['-1'] = {
+                        'name': 'замечание',
+                        'shortname': 'замеч.',
+                        'cost': 0,
+                        'key': '!'
+                    }
+                    print("\tProcessing marks...")
                     for i in marks:
                         m_id:str = i['id'] 
                         if (i['student_id'] in excluded): continue
@@ -351,7 +362,7 @@ async def UpdateData():
                         if (int(m_id) in phantom_marks): continue
                         control_id:str = i['control_id']
                         control = ctrls[control_id]
-                        key = mark_type_cache.get(i['type_id'])
+                        key = mark_type_cache.get(i['type_id'], {'key': 'NF', 'shortname': 'NOT FOUND', 'cost': 0})
                         typ = None
                         if (control_id.startswith('f')):
                             typ = {
@@ -361,15 +372,17 @@ async def UpdateData():
                             i['text'] = 'pSS:f1nAl'
                         else:
                             typ = GetTypeFromId(control['type_id'], data['control_types'])
+                        print(f"\t\tmark_typ: {type(typ)}  mark_key: {type(key)}")
                         cursor.execute("INSERT OR IGNORE INTO marks (school, mark_id, mark_char, shortname, subject_shr, student_id, value, cost, text, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                                         (school, m_id, key['key'], typ['shortname'], subject_shr, i['student_id'], float(key['cost']), float(typ['cost']), i['text'], lsndate[control['lesson_id']])
                                     )
                         
-                    print(len(phantom_marks))
-                    print(len(real_marks))
+                    print("\tMatching marks...")
+                    print(f"\t\t{len(phantom_marks)}")
+                    print(f"\t\t{len(real_marks)}")
                     for i in phantom_marks:
                         if not i in real_marks:
-                            print(f"deleting {i}")
+                            print(f"\t\tdeleting mark {i}")
                             cursor.execute("DELETE FROM marks WHERE school = ? AND mark_id = ?", (school, i))
                     print(f"\tData parsing complited in {time.time()-t}\n\tSleeping...")
                     time.sleep(2)
@@ -454,21 +467,21 @@ async def PostProcessLesson(website, login, password, school, class_name, journa
     time.sleep(1.5)
     d = GetOrCreateDnevnik(website, login, password)
     lesson:dict = d.GetLessonInfo(journal_id, lesson_id)
-    if(lesson.get('errorno') != None): 
-        print('lesson not found!')
+    if(lesson.get('errorno') is not None): 
+        print('\tlesson not found!')
         return
     files = lesson['files']
     #print('Post processing files....')
     if(len(files) == 0): 
-        print('No files found!')
+        print('\tNo files found!')
         return
-    print("Detected files, starting downloading...")
+    print("\tDetected files, starting downloading...")
     for i in files:
         file_id = i['id']
         file_name:str = i['name']
         cursor.execute("SELECT id FROM files WHERE school = ? AND file_id = ? AND file IS NOT NULL", (school, file_id))
         if(cursor.fetchone()): continue
-        cursor.execute("INSERT INTO files (school, lesson_id, file_id, file_name) VALUES (?, ?, ?, ?)", (school, lesson_id, file_id, file_name))
+        cursor.execute("INSERT OR IGNORE INTO files (school, lesson_id, file_id, file_name) VALUES (?, ?, ?, ?)", (school, lesson_id, file_id, file_name))
         off = file_name.rfind('.')
         file_name = f"files/{uuid.uuid4()}{file_name[off:]}"
         bts = d.DownloadFile(lesson_id, file_id)

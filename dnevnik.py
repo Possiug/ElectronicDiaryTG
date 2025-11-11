@@ -85,7 +85,7 @@ class Dnevnik:
 
 
     def _get_request_(self, path):
-        print("[low level] request")
+        # print("[low level] request")
         res = requests.get(f"{self.api}{path}", cookies=self.cookies, timeout=10)
         if(res.status_code == 401):
             self.Login()
@@ -93,6 +93,6 @@ class Dnevnik:
             res = requests.get(f"{self.api}{path}", cookies=self.cookies, timeout=10)
         if(not res.ok):
             raise RuntimeError(f"Error in request({path}): status: {res.status_code} answer: {res.text}")
-        print("[low level] answer")
+        # print("[low level] answer")
         return res
 
