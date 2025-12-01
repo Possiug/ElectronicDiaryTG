@@ -1,4 +1,4 @@
-from telegram import Update, Message, InlineKeyboardMarkup, InlineKeyboardButton, User, LabeledPrice, SuccessfulPayment, InputMediaPhoto, ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton, KeyboardButtonRequestUsers, LinkPreviewOptions, ChatMemberUpdated, ChatMember, Chat, InputFile
+from telegram import Update, Message, InlineKeyboardMarkup, InlineKeyboardButton, User, LabeledPrice, SuccessfulPayment, InputMediaPhoto, ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton, KeyboardButtonRequestUsers, LinkPreviewOptions, ChatMemberUpdated, ChatMember, Chat, InputFile, WebAppInfo
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters, ExtBot, CallbackQueryHandler, PreCheckoutQueryHandler, ShippingQueryHandler, ChatMemberHandler
 import sqlite3
 from dnevnik import Dnevnik
@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 PASSWORD = os.getenv("PASSWORD")
+WEB_APP_URL = os.getenv("WEBAPP")
 DB_FILENAME = 'ed.db'
 
 
@@ -160,6 +161,13 @@ def PrepareDB():
                    END;''')
     cursor.execute('''CREATE TRIGGER IF NOT EXISTS new_lesson 
                 AFTER INSERT ON lessons
+                BEGIN
+                   INSERT INTO events (type, school, class, subject_shr, lesson_id, extra, affected_date) VALUES 
+                   ("lesson_added", NEW.school, NEW.class_name, NEW.subject_shr, NEW.id, NEW.homework, NEW.date);
+                END;''')
+    cursor.execute('''CREATE TRIGGER IF NOT EXISTS update_lesson 
+                AFTER UPDATE ON lessons
+                WHEN NEW.homework != OLD.homework
                 BEGIN
                    INSERT INTO events (type, school, class, subject_shr, lesson_id, extra, affected_date) VALUES 
                    ("lesson_added", NEW.school, NEW.class_name, NEW.subject_shr, NEW.id, NEW.homework, NEW.date);
@@ -397,17 +405,19 @@ async def EventProc():
     msgs = {}
     for i in events:
         try:
-            event_type = i[1]
-            school = i[2]
-            class_name = i[3]
-            subject_shr = i[4]
-            student_id = i[5]
-            lesson_id = i[6]
-            mark_id = i[7]
-            extra = i[8]
+            event_type:str = i[1]
+            school:int = i[2]
+            class_name:str = i[3]
+            subject_shr:int = i[4]
+            student_id:int = i[5]
+            lesson_id:int = i[6]
+            mark_id:int = i[7]
+            extra:str = i[8]
             date = i[9]
             print(f"Processing {event_type} event: {i}")
             if (event_type == 'lesson_added'):
+                if (extra.strip() == ''):
+                    continue
                 cursor.execute("SELECT tid FROM students WHERE tid != 0 AND school = ? AND (class_name = ? OR student_id IN (SELECT student_id FROM class_linking WHERE school = ? AND subject_shr = ? AND group_name = ?))", (school, class_name, school, subject_shr, class_name))
                 students = cursor.fetchall()
                 for j in students:
@@ -809,6 +819,21 @@ async def HomeWorkCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_html(f"Вы еще не привязаны к электронному дневнику! Попросите у вашего учителя ссылку для привязки!", reply_markup=CLOSE_RPMK)
         return
     await chat.send_message(GetFullHomework(*student), parse_mode='HTML', disable_web_page_preview=True, reply_markup=CLOSE_RPMK)
+
+# async def AppCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+#     chat = update.effective_chat
+#     msg = update.effective_message
+#     sender = update.effective_sender
+#     cursor.execute("SELECT student_id FROM students WHERE tid = ?", (sender.id,))
+#     student = cursor.fetchone()
+#     if(student == None):
+#         await msg.reply_html(f"Вы еще не привязаны к электронному дневнику! Попросите у вашего учителя ссылку для привязки!", reply_markup=CLOSE_RPMK)
+#         return
+#     url = f"https://edtg.github.io?host={WEB_APP_URL}/student/{student[0]}"
+#     rpmk = InlineKeyboardMarkup([[
+#         InlineKeyboardButton("Открыть дневник", web_app=WebAppInfo(url=url)),
+#     ], CLOSE_BUTTON])
+#     await msg.reply_text("Открой миниприложение:",reply_markup=rpmk)
 
 async def MarksCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -1486,6 +1511,7 @@ if (__name__ == '__main__'):
     application.add_handler(CommandHandler("admin", AdminProc))
     application.add_handler(CommandHandler("start", StartProc))
     application.add_handler(CommandHandler("dz", HomeWorkCMDProc))
+    # application.add_handler(CommandHandler("app", AppCMDProc))
     application.add_handler(CommandHandler("marks", MarksCMDProc))
     application.add_handler(MessageHandler(filters.ALL, MsgProc))
     application.add_handler(CallbackQueryHandler(CallbackProc))
