@@ -77,11 +77,13 @@ def PrepareDB():
                 school INTEGER NOT NULL,
                 class_name TEXT NOT NULL,
                 student_id INTEGER NOT NULL,
+                send_dz INTEGER DEFAULT 1, 
+                send_marks INTEGER DEFAULT 1, 
                 invite_code INTEGER UNIQUE,
                 status TEXT DEFAULT "invite",
                 alias TEXT NOT NULL,
                 tid INTEGER DEFAULT 0
-                )''')
+                )''') #TODO настройки для отправки уведомлений!
     cursor.execute('''CREATE TABLE IF NOT EXISTS class_linking (
                 school INTEGER NOT NULL,
                 class_name TEXT NOT NULL,
@@ -418,14 +420,14 @@ async def EventProc():
             if (event_type == 'lesson_added'):
                 if (extra.strip() == ''):
                     continue
-                cursor.execute("SELECT tid FROM students WHERE tid != 0 AND school = ? AND (class_name = ? OR student_id IN (SELECT student_id FROM class_linking WHERE school = ? AND subject_shr = ? AND group_name = ?))", (school, class_name, school, subject_shr, class_name))
+                cursor.execute("SELECT tid FROM students WHERE tid != 0 AND send_dz = 1 AND school = ? AND (class_name = ? OR student_id IN (SELECT student_id FROM class_linking WHERE school = ? AND subject_shr = ? AND group_name = ?))", (school, class_name, school, subject_shr, class_name))
                 students = cursor.fetchall()
                 for j in students:
                     a = msgs.get(j[0], "<b>Новая информация!</b>:\n")
                     a+=f"Новое дз по <i>{GetShortcutText(subject_shr)}</i> от {date}:\n<blockquote expandable>{extra}</blockquote>\n"
                     msgs[j[0]] = a
             elif (event_type == 'mark_added'):
-                cursor.execute("SELECT tid FROM students WHERE school = ? AND student_id = ? AND tid != 0", (school, student_id, ))
+                cursor.execute("SELECT tid FROM students WHERE school = ? AND send_marks = 1 AND student_id = ? AND tid != 0", (school, student_id, ))
                 student = cursor.fetchone()
                 if (student):
                     cursor.execute("SELECT mark_char, value, cost, text FROM marks WHERE school = ? AND mark_id = ?", (school, mark_id))
@@ -436,7 +438,7 @@ async def EventProc():
                             a+=f"Новая оценка по <i>{GetShortcutText(subject_shr)}</i>\n   Оценка: <b><u>{mark[0]}</u></b> за {extra} с коэффициентом {mark[2]}\n"
                             msgs[student[0]] = a
             elif (event_type == 'mark_deleted'):
-                cursor.execute("SELECT tid FROM students WHERE school = ? AND student_id = ? AND tid != 0", (school, student_id, ))
+                cursor.execute("SELECT tid FROM students WHERE school = ? AND send_marks = 1 AND student_id = ? AND tid != 0", (school, student_id, ))
                 student = cursor.fetchone()
                 if(student):
                     a = msgs.get(student[0], "<b>Новая информация!</b>:\n")
@@ -777,20 +779,33 @@ async def StartProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if(invite == None):
                 await msg.reply_html("Кажется ваша ссылка приглашения недействительна!\nПопросите учителя создать новую или обратитесь к разработчику", reply_markup=DEV_RPMK)
                 return
-            await msg.reply_html(f"Добро пожаловать!<blockquote>Школа: {invite[0]}\nКласс: {invite[1]}\nФамилия имя: {invite[2]}</blockquote>\nЭто вы?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Да",callback_data=f"its_me_s:{code}")], [InlineKeyboardButton("Нет", callback_data="itsnt_me_s")]]))
+            await msg.reply_html(f"Добро пожаловать!\n<blockquote>Школа: {invite[0]}\nКласс: {invite[1]}\nФамилия имя: {invite[2]}</blockquote>\nЭто вы?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Да",callback_data=f"its_me_s:{code}")], [InlineKeyboardButton("Нет", callback_data="itsnt_me_s")]]))
         return
-    await msg.reply_html("Добро пожаловать в бота!\nБот предоставляет доступ к вашим оценкам и дз без госуслуг и сложной авторизации, прямо в телеграмме\n\nУ бота открытый исходный <a href='https://github.com/Possiug/ElectronicDiaryTG'>код</a>!\nБуду раз звездочкам на гитхабе :)\n\nСоздано @possiug для всех\nАвтор идеи: @isichmelili\nАватарка найдена: @MauzeS_paw\nЧтобы начать, выберите свою роль:",reply_markup=ROLES_RPMK)
+    await msg.reply_html("Добро пожаловать в бота!\nБот предоставляет доступ к вашим оценкам и дз без госуслуг и сложной авторизации, прямо в телеграмме (или на сайте по команде /app)\n\nПоблагодарить разработчика: /donate\nУ бота открытый исходный <a href='https://github.com/Possiug/ElectronicDiaryTG'>код</a>!\nБуду раз звездочкам на гитхабе :)\n\nСоздано @possiug для всех\nСайт написан: @rtroyanchi\nАвтор идеи: @isichmelili\nАватарка найдена: @MauzeS_paw\nЧтобы начать, выберите свою роль:",reply_markup=ROLES_RPMK)
 
 
-async def ProfileProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def ProfileProc(update: Update, context: ContextTypes.DEFAULT_TYPE, edit = False):
     msg = update.effective_message
     sender = update.effective_sender
-    cursor.execute("SELECT id, student_id, school, class_name, alias FROM students WHERE tid = ?", (sender.id,))
+    cursor.execute("SELECT id, student_id, school, class_name, alias, send_dz, send_marks FROM students WHERE tid = ?", (sender.id,))
     student = cursor.fetchone()
     if(student == None):
         await msg.reply_html(f"Вы еще не привязаны к электронному дневнику! Попросите у вашего учителя ссылку для привязки!", reply_markup=CLOSE_RPMK)
         return
-    await msg.reply_html(f"Ученик:<blockquote>Школа: {student[2]}\nКласс: {student[3]}\nФамилия имя: {student[4]}</blockquote>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Обновить имя",callback_data=f"update_fio_s")], [InlineKeyboardButton("Выйти",callback_data="logout_s")], CLOSE_BUTTON]))
+    rpmk = InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("Обновить имя",callback_data=f"update_fio_s")],
+            [InlineKeyboardButton("Выкл дз.", callback_data="notification:dd") if student[5] == 1 else InlineKeyboardButton("Вкл дз.", callback_data="notification:ed")],
+            [InlineKeyboardButton("Выкл оценки", callback_data="notification:dm") if student[6] == 1 else InlineKeyboardButton("Вкл оценки", callback_data="notification:em")],
+            [InlineKeyboardButton("Выйти",callback_data="logout_s")], 
+            CLOSE_BUTTON
+        ]
+    )
+    text = f"Ученик:\n<blockquote>Школа: {student[2]}\nКласс: {student[3]}\nФамилия имя: {student[4]}</blockquote>\nУведомления о:\n<blockquote>Дз: {"включены" if student[5] == 1 else "выключены"}\nОценках: {"включены" if student[6] == 1 else "выключены"}</blockquote>"
+    if (edit):
+        await msg.edit_text(text, parse_mode='HTML', reply_markup=rpmk)
+    else:
+        await msg.reply_html(text, reply_markup=rpmk)
     
 async def StatusProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -809,6 +824,10 @@ async def StatusProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.reply_html(text)
 
 
+async def DonateProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    await msg.reply_html("Вы можете отправить денежную благодарность по <a href=\"https://www.donationalerts.com/r/possiug\">ссылке</a>\n")
+
 async def HomeWorkCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     msg = update.effective_message
@@ -820,20 +839,20 @@ async def HomeWorkCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await chat.send_message(GetFullHomework(*student), parse_mode='HTML', disable_web_page_preview=True, reply_markup=CLOSE_RPMK)
 
-# async def AppCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-#     chat = update.effective_chat
-#     msg = update.effective_message
-#     sender = update.effective_sender
-#     cursor.execute("SELECT student_id FROM students WHERE tid = ?", (sender.id,))
-#     student = cursor.fetchone()
-#     if(student == None):
-#         await msg.reply_html(f"Вы еще не привязаны к электронному дневнику! Попросите у вашего учителя ссылку для привязки!", reply_markup=CLOSE_RPMK)
-#         return
-#     url = f"https://edtg.github.io?host={WEB_APP_URL}/student/{student[0]}"
-#     rpmk = InlineKeyboardMarkup([[
-#         InlineKeyboardButton("Открыть дневник", web_app=WebAppInfo(url=url)),
-#     ], CLOSE_BUTTON])
-#     await msg.reply_text("Открой миниприложение:",reply_markup=rpmk)
+async def AppCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    msg = update.effective_message
+    sender = update.effective_sender
+    cursor.execute("SELECT student_id FROM students WHERE tid = ?", (sender.id,))
+    student = cursor.fetchone()
+    if(student == None):
+        await msg.reply_html(f"Вы еще не привязаны к электронному дневнику! Попросите у вашего учителя ссылку для привязки!", reply_markup=CLOSE_RPMK)
+        return
+    url = f"{WEB_APP_URL}/student/{student[0]}"
+    rpmk = InlineKeyboardMarkup([[
+        InlineKeyboardButton("Открыть дневник", web_app=WebAppInfo(url=url)),
+    ], CLOSE_BUTTON])
+    await msg.reply_text(f"Электронный дневник так же доступен на сайте (НЕ ПЕРЕСЫЛАЙТЕ ЭТУ ССЫЛКУ, она дает доступ к вашим оценкам!): {url}")
 
 async def MarksCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -871,7 +890,7 @@ async def MsgProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 t = ""
                 for i in sql_answer:
                     t+=f"{i[0]} - {i[1]}\n"
-                await msg.reply_html(f"Вы уже учитель следущих классов:<blockquote>{t}</blockquote>\nВыберите действие:",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Изменит/удалить ЭД", callback_data="edit_journals_t:0")], [InlineKeyboardButton("Добавить новый ЭД",callback_data="start_teacher")]]))
+                await msg.reply_html(f"Вы уже учитель следущих классов:\n<blockquote>{t}</blockquote>\nВыберите действие:",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Изменит/удалить ЭД", callback_data="edit_journals_t:0")], [InlineKeyboardButton("Добавить новый ЭД",callback_data="start_teacher")]]))
                 return
             await msg.reply_html(f"Если Вы являетесь <b>УЧИТЕЛЕМ</b>, то, чтобы сделать электронный дневник для вашего класс без госуслуг, вам необходимо ввести <u><b>номер вашей школы</b></u>(Только номер: без ГБОУ, ФМЛ и тд.):")
             users_state[sender.id] = UStates.AWAIT_OO_NUMBER_TEACHER
@@ -966,7 +985,7 @@ async def MsgProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif(state == UStates.AWAIT_PASS_T):
         password = msg.text
         user_d['password'] = password
-        await msg.reply_html(f"Итого:<blockquote>Вы учитель школы №{user_d['school_num']}\nПолное наименование ОУ: {user_d['school_name']}\nСайт Параграф: {user_d['school_web']}\nЛогин: {user_d['login']}\nПароль: {user_d['password']}</blockquote>\nВерно?",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Да, все верно", callback_data="all_ok_tr")], [InlineKeyboardButton("Исправить логин и пароль", callback_data="enter_login_t")], [InlineKeyboardButton("Начать заново", callback_data="menu")]]))
+        await msg.reply_html(f"Итого:\n<blockquote>Вы учитель школы №{user_d['school_num']}\nПолное наименование ОУ: {user_d['school_name']}\nСайт Параграф: {user_d['school_web']}\nЛогин: {user_d['login']}\nПароль: {user_d['password']}</blockquote>\nВерно?",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Да, все верно", callback_data="all_ok_tr")], [InlineKeyboardButton("Исправить логин и пароль", callback_data="enter_login_t")], [InlineKeyboardButton("Начать заново", callback_data="menu")]]))
         users_state[sender.id] = UStates.AWAIT_FINAL_CONFIRM_T
     pass
 
@@ -1019,10 +1038,14 @@ async def AdminProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def TestProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
     await msg.reply_html(f"Тест успешен, аргументы: {args}")
 async def DeleteMeProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
-    await msg.delete()
+    try:
+        await msg.delete()
+    except: pass
 async def CancelMeProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
     users_state[sender.id] = UStates.UNKNOWN
-    await msg.delete()
+    try:
+        await msg.delete()
+    except: pass
 async def Menu(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
     await msg.reply_html(f"Меню. Выберите вашу роль:", reply_markup=ROLES_RPMK)
     users_state[sender.id] = UStates.AWAIT_CHOOSE_ROLE
@@ -1154,7 +1177,7 @@ async def EditJournalProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, 
     if(journal == None):
         await msg.edit_text("Такой журнал не найден у вас, попробуйте еще раз и убедитесь, что журнал все еще принадлежит вам", reply_markup=CLOSE_RPMK)
         return
-    await msg.edit_text(f"Журнал:<blockquote>Школа: {journal[1]}\nКласс: {journal[2]}\nВебсайт: {journal[3]}\nЛогин: {journal[4]}\nПароль: {journal[5]}{f"\n<b>Ваш журнал деактивирован из-за ошибки авторизации, попробуйте заного ввести логин и пароль или вебсайт! <u>(ВАШИ УЧЕНИКИ НЕ МОГУТ СМОТРЕТЬ ОЦЕНКИ И ДЗ)</u></b>" if not journal[6] else ""}</blockquote>", parse_mode='HTML', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Управление доступом", callback_data=f"manage_j_access:{jid}")],[InlineKeyboardButton("Изменить вебсайт", callback_data=f"edit_dnevnik_web:{journal[0]}")],[InlineKeyboardButton("Изменить логин и пароль", callback_data=f"edit_dnevnik_lp:{journal[0]}")], [InlineKeyboardButton("Удалить журнал", callback_data=f"predelete_cd:{journal[0]}")], CLOSE_BUTTON]))
+    await msg.edit_text(f"Журнал:\n<blockquote>Школа: {journal[1]}\nКласс: {journal[2]}\nВебсайт: {journal[3]}\nЛогин: {journal[4]}\nПароль: {journal[5]}{f"\n<b>Ваш журнал деактивирован из-за ошибки авторизации, попробуйте заного ввести логин и пароль или вебсайт! <u>(ВАШИ УЧЕНИКИ НЕ МОГУТ СМОТРЕТЬ ОЦЕНКИ И ДЗ)</u></b>" if not journal[6] else ""}</blockquote>", parse_mode='HTML', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Управление доступом", callback_data=f"manage_j_access:{jid}")],[InlineKeyboardButton("Изменить вебсайт", callback_data=f"edit_dnevnik_web:{journal[0]}")],[InlineKeyboardButton("Изменить логин и пароль", callback_data=f"edit_dnevnik_lp:{journal[0]}")], [InlineKeyboardButton("Удалить журнал", callback_data=f"predelete_cd:{journal[0]}")], CLOSE_BUTTON]))
     users_state[sender.id] = UStates.UNKNOWN
 
 async def EditJournalAccessProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
@@ -1305,7 +1328,7 @@ async def PreDeleteJournal(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message,
         await msg.edit_text("Такой журнал не найден у вас, попробуйте еще раз и убедитесь, что журнал все еще принадлежит вам", reply_markup=CLOSE_RPMK)
         return
         
-    await msg.edit_text(f"Журнал:<blockquote>Школа: {journal[1]}\nКласс: {journal[2]}\nВебсайт: {journal[3]}\nЛогин: {journal[4]}\nПароль: {journal[5]}</blockquote>\nВы уверены, что хотите <b>удалить журнал</b>, это действие <u>необратимо</u>, а ваши ученики <u>потеряют доступ к оценкам</u>\nВЫ ХОТИТЕ УДАЛИТЬ ЖУРНАЛ?", parse_mode='HTML', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Да, удалить", callback_data=f"delete_cd:{jid}")], [InlineKeyboardButton("Назад", callback_data=f"edit_journal_t:{jid}")], CLOSE_BUTTON]))
+    await msg.edit_text(f"Журнал:\n<blockquote>Школа: {journal[1]}\nКласс: {journal[2]}\nВебсайт: {journal[3]}\nЛогин: {journal[4]}\nПароль: {journal[5]}</blockquote>\nВы уверены, что хотите <b>удалить журнал</b>, это действие <u>необратимо</u>, а ваши ученики <u>потеряют доступ к оценкам</u>\nВЫ ХОТИТЕ УДАЛИТЬ ЖУРНАЛ?", parse_mode='HTML', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Да, удалить", callback_data=f"delete_cd:{jid}")], [InlineKeyboardButton("Назад", callback_data=f"edit_journal_t:{jid}")], CLOSE_BUTTON]))
 
 async def DeleteJournal(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
     jid = int(args[0])
@@ -1315,7 +1338,7 @@ async def DeleteJournal(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, ch
         await msg.edit_text("Такой журнал не найден у вас, попробуйте еще раз и убедитесь, что журнал все еще принадлежит вам", reply_markup=CLOSE_RPMK)
         return
     cursor.execute("DELETE FROM dnevniks WHERE id = ?", (jid,))
-    await msg.edit_text(f"Журнал:<blockquote>Школа: {journal[1]}\nКласс: {journal[2]}\nВебсайт: {journal[3]}</blockquote>\nУдален!", parse_mode='HTML', reply_markup=CLOSE_RPMK)
+    await msg.edit_text(f"Журнал:\n<blockquote>Школа: {journal[1]}\nКласс: {journal[2]}\nВебсайт: {journal[3]}</blockquote>\nУдален!", parse_mode='HTML', reply_markup=CLOSE_RPMK)
 
 
 async def EnterWebTeacher(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
@@ -1439,6 +1462,21 @@ async def LogoutStudent(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, ch
 async def NotMeStudentProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
     await msg.edit_text(f"Сообщите учителю, что вам отправили не ту ссылку! Или сообщите разработчику", reply_markup=DEV_CLOSE_RPMK)
 
+async def ChangeNotications(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
+    cmd = args[0]
+    if (cmd == 'ed'):
+        cursor.execute("UPDATE students SET send_dz = 1 WHERE tid = ?", (sender.id,))
+    elif (cmd == 'dd'):
+        cursor.execute("UPDATE students SET send_dz = 0 WHERE tid = ?", (sender.id,))
+    elif (cmd == 'em'):
+        cursor.execute("UPDATE students SET send_marks = 1 WHERE tid = ?", (sender.id,))
+    elif (cmd == 'dm'):
+        cursor.execute("UPDATE students SET send_marks = 0 WHERE tid = ?", (sender.id,))
+    else:
+        raise RuntimeError("Notification setting not found!")
+    
+    await ProfileProc(u, c, True)
+
 
 
 async def UnkonwnCLBProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
@@ -1496,7 +1534,8 @@ CLB_COMMANDS = {
     'delete_student': DeleteStudentProc,
     'show_choose_term_s': ShowChooseTermProc,
     'marks_by_term_s': MarksByTermProc,
-    'show_final_marks_s': ShowFinalMarks
+    'show_final_marks_s': ShowFinalMarks,
+    'notification': ChangeNotications
 }
 #endregion
 
@@ -1511,7 +1550,8 @@ if (__name__ == '__main__'):
     application.add_handler(CommandHandler("admin", AdminProc))
     application.add_handler(CommandHandler("start", StartProc))
     application.add_handler(CommandHandler("dz", HomeWorkCMDProc))
-    # application.add_handler(CommandHandler("app", AppCMDProc))
+    application.add_handler(CommandHandler("app", AppCMDProc))
+    application.add_handler(CommandHandler("donate", DonateProc))
     application.add_handler(CommandHandler("marks", MarksCMDProc))
     application.add_handler(MessageHandler(filters.ALL, MsgProc))
     application.add_handler(CallbackQueryHandler(CallbackProc))

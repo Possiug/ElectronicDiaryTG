@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<body>
+
+</body>
+<script defer>
+    const urlParams = new URLSearchParams(window.location.search);
+    const myParam = urlParams.get('host');
+    console.log(myParam)
+    fetch(myParam)
+    .then( response => response.text() )
+    .then((answer) => {
+        const parser = new DOMParser();  
+        document.open();
+        document.write(answer);
+        document.close();/*
+        doc = parser.parseFromString(answer, "text/html");
+        document.replaceChild( doc.documentElement, document.documentElement );*/
+        init()
+    })
+</script>

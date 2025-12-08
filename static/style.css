@@ -1,0 +1,448 @@
+:root{
+  --bg:#0b0f14;
+  --card:#11161d;
+  --border:#1d2630;
+  --text:#e8edf2;
+  --muted:#7b8794;
+  --accent:#4da3ff;
+  --green:#27c281;
+  --yellow:#f1c44f;
+  --orange:#f78c2c;
+  --red:#e84c4c;
+}
+
+*{box-sizing:border-box;}
+
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font:16px/1.5 system-ui,Segoe UI,Roboto,sans-serif;
+}
+
+/* Шапка */
+
+.topbar{
+  position:sticky;
+  top:0;
+  z-index:10;
+  background:#0d131a;
+  border-bottom:1px solid var(--border);
+}
+
+.wrap{
+  max-width:1100px;
+  margin:0 auto;
+  padding:20px;
+}
+
+.brandrow{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:14px;
+}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-weight:700;
+  font-size:18px;
+}
+
+.brand-dot{
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 10px var(--accent);
+}
+
+/* Вкладки */
+
+.tabs{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:12px;
+}
+
+.tabs a{
+  padding:8px 14px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  text-decoration:none;
+  color:var(--text);
+  font-size:14px;
+}
+
+.tabs a.active{
+  background:#16202c;
+  color:var(--accent);
+}
+
+.qpick{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.qpick label{
+  font-size:14px;
+}
+
+.qpick select{
+  padding:6px 10px;
+  border-radius:8px;
+  border:1px solid var(--border);
+  background:#11161d;
+  color:var(--text);
+}
+
+/* Общие элементы */
+
+h2{
+  margin:0 0 10px;
+  font-size:20px;
+}
+
+.muted{
+  color:var(--muted);
+  font-size:14px;
+}
+
+.nowrap{
+  white-space:nowrap;
+}
+
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:16px;
+  margin-bottom:20px;
+}
+
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(230px,1fr));
+  gap:14px;
+}
+
+/* Предметы в списке */
+
+.subject{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:12px;
+  border-radius:12px;
+  border:1px solid var(--border);
+  background:#0f151d;
+}
+
+.subject a{
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  text-decoration:none;
+  font-size:13px;
+  color:var(--accent);
+}
+
+/* Таблицы */
+
+table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:14px;
+}
+
+th,td{
+  padding:8px 10px;
+  border-bottom:1px solid var(--border);
+  text-align:left;
+}
+
+th{
+  color:var(--muted);
+  font-weight:600;
+}
+
+/* Оценки */
+
+.grade{
+  display:inline-block;
+  padding:4px 8px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  font-size:13px;
+  text-align:center;
+  min-width:26px;
+}
+
+.g5{background:rgba(39,194,129,.2); color:var(--green);}
+.g4{background:rgba(241,196,79,.2); color:var(--yellow);}
+.g3{background:rgba(247,140,44,.2); color:var(--orange);}
+.g2{background:rgba(232,76,76,.25); color:var(--red);}
+.g1{background:#000; color:#fff;}
+
+/* Страницы предметов */
+
+.back{
+  display:inline-block;
+  margin-bottom:10px;
+  font-size:14px;
+  text-decoration:none;
+  color:var(--accent);
+}
+
+/* Логика показа вкладок / страниц */
+/* По умолчанию скрываем все секции */
+
+section{
+  display:none;
+}
+
+/* Показываем только таргет */
+
+section:target{
+  display:block;
+}
+
+/* Если нет хеша – показываем ДЗ */
+
+body:not(:has(section:target)) #dz{
+  display:block;
+}
+
+
+/* При переходе на #sub-... (страница предмета) – в любом случае показывается только эта секция,
+   т.к. она тоже <section id="sub-..."> */
+
+
+.grade-none {
+  padding:4px 8px;
+  border-radius:999px;
+  background:#2b2f36;
+  color:#7b8794;
+  font-size:13px;
+  border:1px solid #1d2630;
+}
+
+
+/* Цветной средний балл — мягкие оттенки */
+.avg-g5 {
+  display:inline-block;
+  padding:4px 10px;
+  border-radius:999px;
+  background:rgba(39,194,129,.15);
+  color:#5dffbf;
+  border:1px solid rgba(39,194,129,.45);
+}
+
+.avg-g4 {
+  display:inline-block;
+  padding:4px 10px;
+  border-radius:999px;
+  background:rgba(241,196,79,.15);
+  color:#ffe8a3;
+  border:1px solid rgba(241,196,79,.45);
+}
+
+.avg-g3 {
+  display:inline-block;
+  padding:4px 10px;
+  border-radius:999px;
+  background:rgba(247,140,44,.15);
+  color:#ffd1a3;
+  border:1px solid rgba(247,140,44,.45);
+}
+
+.avg-g2 {
+  display:inline-block;
+  padding:4px 10px;
+  border-radius:999px;
+  background:rgba(232,76,76,.15);
+  color:#ffb3b3;
+  border:1px solid rgba(232,76,76,.45);
+}
+
+.avg-g1 {
+  display:inline-block;
+  padding:4px 10px;
+  border-radius:999px;
+  background:#1c1c1c;
+  color:#999;
+  border:1px solid #333;
+}
+
+/* Серый "--" */
+.avg-none {
+  display:inline-block;
+  padding:4px 10px;
+  border-radius:999px;
+  background:#2b2f36;
+  color:#7b8794;
+  border:1px solid #1d2630;
+}
+
+/* Широкая колонка даты во всех таблицах */
+td.col-date, th.col-date {
+  width: 140px;
+  min-width: 140px;
+  white-space: nowrap;
+}
+
+.last-hw-card {
+  margin-top: 16px;
+  background: #0f151d;
+  border: 1px solid var(--border);
+  padding: 12px;
+  border-radius: 12px;
+}
+
+.last-hw-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.last-hw-date {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.last-hw-text {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.last-hw-files a {
+  color: var(--accent);
+  font-size: 13px;
+  margin-right: 6px;
+}
+
+
+/* =====================================================
+   Мобильная адаптация (Telegram / телефоны)
+   ===================================================== */
+
+@media (max-width: 600px) {
+
+  /* Уменьшаем общую ширину */
+  .wrap {
+    padding: 12px;
+  }
+
+  /* Шапка */
+  .topbar {
+    padding: 12px 16px;
+  }
+
+  .brand {
+    font-size: 16px;
+  }
+
+  .brand-dot {
+    width: 8px;
+    height: 8px;
+  }
+
+  /* Вкладки */
+  .tabs {
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .tabs a {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+
+  /* Селектор четверти */
+  .qpick label {
+    font-size: 13px;
+  }
+  .qpick select {
+    padding: 5px 8px;
+    font-size: 14px;
+  }
+
+  /* Карточки */
+  .card {
+    padding: 12px;
+    border-radius: 10px;
+  }
+
+  /* Таблицы на телефоне — горизонтальный скролл */
+  table {
+    font-size: 13px;
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  th, td {
+    padding: 6px 8px;
+  }
+
+  /* Колонка даты — ширина под мобилку */
+  td.col-date, th.col-date {
+    width: 120px;
+    min-width: 120px;
+    white-space: nowrap;
+  }
+
+  /* Оценки — меньше пузырьки */
+  .grade,
+  .grade-none,
+  .avg-g1,
+  .avg-g2,
+  .avg-g3,
+  .avg-g4,
+  .avg-g5 {
+    font-size: 12px;
+    padding: 3px 8px;
+  }
+
+  /* Сетка предметов — одна колонка */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .subject {
+    padding: 10px;
+  }
+
+  .subject a {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  /* Заголовки */
+  h2 {
+    font-size: 18px;
+    margin-bottom: 8px;
+  }
+  h3 {
+    font-size: 15px;
+  }
+
+  /* Меньше отступы под секции предметов */
+  #subjectSections section .wrap {
+    padding: 5px;
+  }
+
+  /* стрелка Назад */
+  .back {
+    font-size: 14px;
+  }
+}
+

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Электронный дневник</title>
+
+  <!-- Стили из static/ -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', _external=True) }}" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <div class="brandrow">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        Электронный дневник
+      </div>
+
+      <div class="qpick">
+        <label for="quarterSel">Четверть:</label>
+        <select id="quarterSel">
+          <option value="1">1 четверть</option>
+          <option value="2">2 четверть</option>
+          <option value="3">3 четверть</option>
+          <option value="4">4 четверть</option>
+        </select>
+      </div>
+    </div>
+
+    <nav class="tabs" id="topnav">
+      <a href="#dz" class="active">Домашнее задание</a>
+      <a href="#grades">Итоговые оценки</a>
+      <a href="#summary">Общая сводка</a>
+      <a href="#subjects">Предметы</a>
+    </nav>
+
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section id="dz">
+    <h2>Домашнее задание</h2>
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Предмет</th>
+            <th>Задание</th>
+            <th class="col-date">Дата</th>
+          </tr>
+        </thead>
+
+        <tbody id="dzBody">
+          <!-- JS подставит реальные ДЗ -->
+        </tbody>
+      </table>
+      <p class="muted" style="margin-top:8px">
+        ДЗ подгружается из электронного дневника за последние дни, независимо от четверти.
+      </p>
+    </div>
+  </section>
+
+
+  <!-- Итоговые оценки по четверти -->
+  <section id="grades">
+    <h2>Итоговые оценки</h2>
+    <div class="card">
+      <div class="muted" id="gradesHint">
+        Показаны данные за <span class="nowrap" id="qLabel">1 четверть</span>.
+      </div>
+      <table>
+        <thead>
+          <tr><th>Предмет</th><th>Средний балл</th><th>Итог</th></tr>
+        </thead>
+        <tbody id="gradesBody">
+          <!-- JS заполнит на основе window.DIARY_DATA -->
+        </tbody>
+      </table>
+      <p class="muted" style="margin-top:8px">
+        Итоговые видны только для предметов, у которых за выбранную четверть есть оценки.
+      </p>
+    </div>
+  </section>
+
+  <section id="summary">
+    <h2>Общая сводка</h2>
+    <div class="card">
+      <div class="muted" id="summaryHint">
+        Показаны оценки за <span class="nowrap" id="summaryQLabel">1 четверть</span>.
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Предмет</th>
+            <th>Оценки</th>
+            <th>Средний балл</th>
+          </tr>
+        </thead>
+        <tbody id="summaryBody">
+          <!-- JS заполнит на основе window.DIARY_DATA -->
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+
+
+  <!-- Предметы (только список) -->
+  <section id="subjects">
+    <h2>Предметы</h2>
+    <p class="muted">
+      Нажми «Перейти», чтобы открыть страницу предмета. Там показываются только оценки выбранной четверти.
+    </p>
+    <div class="grid" id="subjectsGrid">
+      <!-- JS нарисует список предметов на основе window.DIARY_DATA -->
+    </div>
+  </section>
+
+  <!-- Страницы предметов (JS создаёт отдельные <section id="sub-...">) -->
+  <div id="subjectSections"></div>
+
+</main>
+
+<!-- Пробрасываем данные из Flask в JS -->
+<script>
+  window.DIARY_DATA = {{ data_json | safe }};
+</script>
+
+<!-- Скрипт из static/ -->
+<script src="{{ url_for('static', filename='script.js', _external=True) }}"></script>
+</body>
+</html>
