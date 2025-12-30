@@ -150,6 +150,23 @@ function buildSummary(quarter) {
     return;
   }
 
+  function extractNumericMark(m) {
+    const v = Number(m.value);
+    if (Number.isFinite(v) && v >= 1 && v <= 5) return v;
+
+    const ch = String(m.char ?? '').trim();
+    if (/^[1-5]$/.test(ch)) return Number(ch);
+
+    return null;
+  }
+
+  function extractWeight(m) {
+    const w = Number(m.cost);
+    // если cost пустой/NaN/<=0 — считаем вес 1
+    if (!Number.isFinite(w) || w <= 0) return 1;
+    return w;
+  }
+
   (p.subjects || []).forEach(sub => {
     const tr = document.createElement('tr');
 
@@ -160,31 +177,38 @@ function buildSummary(quarter) {
     tdSub.textContent = sub.subject_name;
 
     const marks = sub.marks || [];
+
+    let num = 0; // сумма value*cost
+    let den = 0; // сумма cost
+    let shown = 0;
+
     if (!marks.length) {
       tdMarks.textContent = '—';
-      tdAvg.textContent   = '—';
+      tdAvg.textContent = '—';
     } else {
-      let sum = 0;
-      let count = 0;
-
       marks.forEach(m => {
-        if (!m.value) return;
-        sum   += m.value;
-        count += 1;
+        const val = extractNumericMark(m);
+        if (val == null) return;
 
+        // показываем оценку (без веса)
         const span = document.createElement('span');
-        span.className = 'grade ' + gradeClass(m.value);
-        span.textContent = String(m.value);
+        span.className = 'grade ' + gradeClass(val);
+        span.textContent = String(val);
         span.style.marginRight = '4px';
         tdMarks.appendChild(span);
+        shown++;
+
+        // средний считаем по весу
+        const w = extractWeight(m);
+        num += val * w;
+        den += w;
       });
 
-      if (!count) {
+      if (!shown || den === 0) {
         tdMarks.textContent = '—';
-        tdAvg.textContent   = '—';
+        tdAvg.textContent = '—';
       } else {
-        const avg = (sum / count).toFixed(2);
-        tdAvg.textContent = avg;
+        tdAvg.textContent = (num / den).toFixed(2);
       }
     }
 
@@ -198,6 +222,8 @@ function buildSummary(quarter) {
     summaryBody.innerHTML = `<tr><td colspan="3">Нет предметов для отображения</td></tr>`;
   }
 }
+
+ 
 
 // ============ Список предметов и страницы ============
 
@@ -371,7 +397,6 @@ function renderHomework() {
   }
 }
 
-
 function fillLastHomework(quarter) {
   const subjects = collectSubjects();
 
@@ -421,7 +446,9 @@ function updateQuarterUI() {
 }
 
 // ============ INIT ============
+
 renderSubjects();
 renderHomework();
 loadQuarter();
+
 fillLastHomework(qSel.value);
