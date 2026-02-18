@@ -46,11 +46,6 @@ class UStates:
 users_state:dict[int, str] = {}
 users_data:dict[int, dict] = {}
 dnevniks:dict[str, Dnevnik] = {}
-journals:dict[str, ]
-lesson_types: dict[str, dict[str, str]] = {}
-mark_types: dict[str, dict[str, str]] = {}
-control_types: dict[str, dict[str, str]] = {}
-change_reasons: dict[str, dict[str, str]] = {}
 last_update = {'start': 0, 'stop': 0}
 time_to_sleep = 0
 
@@ -83,7 +78,7 @@ def PrepareDB():
                 status TEXT DEFAULT "invite",
                 alias TEXT NOT NULL,
                 tid INTEGER DEFAULT 0
-                )''') #TODO настройки для отправки уведомлений!
+                )''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS class_linking (
                 school INTEGER NOT NULL,
                 class_name TEXT NOT NULL,
@@ -226,7 +221,7 @@ async def mainLoop():
         time_to_sleep = 60*60
         while time_to_sleep > 0:
             current_h = datetime.now().hour
-            print(time_to_sleep)
+            print(f"\033[1A\r\033[K{time_to_sleep}")
             if(current_h > 23 or current_h < 5):
                 await asyncio.sleep(1)
             await asyncio.sleep(1)
@@ -562,7 +557,10 @@ async def StartCommandProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.reply_html(f"Вы не вошли в аккаунт, используйте /menu чтобы получить больше информации",reply_markup=CLOSE_RPMK)
             return
         text = "<u>За последние 2 недели</u>:\n"+GetHTMLSubjectHomework(student[1], student[2], subject_shr, student[0], 100, 14, 14)
-        await chat.send_message(text, parse_mode='HTML', reply_markup=CLOSE_RPMK, disable_web_page_preview=True)
+        btns = []
+        btns.append([InlineKeyboardButton("-2 недели", callback_data=f"hmwrd:{subject_shr}:{28}")])
+        btns.append(CLOSE_BUTTON)
+        await chat.send_message(text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(btns), disable_web_page_preview=True)
     elif(code.startswith("mrks")):
         subject_shr = code[4:]
         cursor.execute("SELECT student_id, school, class_name FROM students WHERE tid = ?", (sender.id,))
@@ -971,9 +969,9 @@ async def MsgProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print(f"Error in new lp: {e}")
             await m.edit_text(f"Кажется сайт ЭД недоступен или произошла ошибка, попробуйте снова позже или сообщите разработчику\n\nВведите <u><b>новый логин и пароль</b></u>:", parse_mode='HTML', reply_markup=InlineKeyboardButton(CANCEL_BUTTON, DEV_BUTTON))
             return
-        cursor.execute("UPDATE dnevniks SET login = ?, password = ? WHERE teacher_tid = ? AND id = ?", (login, password, sender.id, user_d['journal_id']))
+        cursor.execute("UPDATE dnevniks SET login = ?, password = ?, is_active = 1 WHERE teacher_tid = ? AND id = ?", (login, password, sender.id, user_d['journal_id']))
         await msg.delete()
-        await m.edit_text(f"Успешно установлен новык логин и пароль:\n<code>{login}:{password}</code>", reply_markup=CLOSE_RPMK)
+        await m.edit_text(f"Успешно установлен новык логин и пароль:\n<code>{login}:{password}</code>", reply_markup=CLOSE_RPMK, parse_mode='HTML')
         users_state[sender.id] = UStates.UNKNOWN
         
             
@@ -1031,6 +1029,26 @@ async def AdminProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await SendLongMsg(context.bot, chat.id, r)
 
+async def AnnounceProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    chat = update.effective_chat
+    sender = update.effective_sender
+    txt_to_send = msg.text.split('\n', 1)[1]
+    if(context.args[0] == PASSWORD):
+        cursor.execute("SELECT tid FROM students WHERE tid != 0")
+        sql_answer = cursor.fetchall()
+        total = len(sql_answer)
+        upd_msg = await msg.reply_text(f"Производиться рассылка 0/{total}...")
+        for i in range(total):
+            if (i % 10 == 0):
+                await upd_msg.edit_text(f"Производиться рассылка {i + 1}/{total}...")
+                time.sleep(4)
+            try:
+                await context.bot.send_message(sql_answer[i][0], txt_to_send)
+            except: pass
+        await upd_msg.edit_text(f"Рассылка завершена! Отправлено: {total}")
+                
+            
 
 
 #region Callback Func
@@ -1315,7 +1333,7 @@ async def EditJournalLPProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message
         await msg.edit_text("Такой журнал не найден у вас, попробуйте еще раз и убедитесь, что журнал все еще принадлежит вам", reply_markup=CLOSE_RPMK)
         return
         
-    await msg.reply_html(f"Вы собираетесь изменить сайт Параграфа для журнала\n<blockquote>Школа: {journal[1]}\nКласс: {journal[2]}\nСтарый логин: {journal[4]}\nСтарый пароль: {journal[5]}</blockquote>\n\nВведите <u><b>новый логин пароль</b></u> в сообщении в первой строке - логин, во второй - пароль:", reply_markup=CANCEL_RPMK)
+    await msg.reply_html(f"Вы собираетесь изменить логин и пароль Параграфа для журнала\n<blockquote>Школа: {journal[1]}\nКласс: {journal[2]}\nСтарый логин: {journal[4]}\nСтарый пароль: {journal[5]}</blockquote>\n\nВведите <u><b>новый логин пароль</b></u> в сообщении в первой строке - логин, во второй - пароль:", reply_markup=CANCEL_RPMK)
     users_state[sender.id] = UStates.AWAIT_EDIT_LP_T
     users_data[sender.id] = {"journal_id":jid}
 
@@ -1478,6 +1496,24 @@ async def ChangeNotications(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message
     await ProfileProc(u, c, True)
 
 
+async def HomeWorkCLBProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
+    subject_shr = args[0]
+    day_offset = int(args[1])
+    cursor.execute("SELECT student_id, school, class_name FROM students WHERE tid = ?", (sender.id,))
+    student = cursor.fetchone()
+    if(student == None):
+        await msg.edit_text(f"Вы не вошли в аккаунт, используйте /menu чтобы получить больше информации",reply_markup=CLOSE_RPMK)
+        return
+    cursor.execute("SELECT date('now', ?), date('now', ?)", (f'{-day_offset} days', f'{14-day_offset} days'))
+    data = cursor.fetchone()
+    text = f"<u>Дз с {data[0]} по {data[1]}</u>:\n"+GetHTMLSubjectHomework(student[1], student[2], subject_shr, student[0], 100, day_offset, 14)
+
+    btns = []
+    if (day_offset > 14):
+        btns.append([InlineKeyboardButton("+2 недели", callback_data=f"hmwrd:{subject_shr}:{day_offset - 14}")])
+    btns.append([InlineKeyboardButton("-2 недели", callback_data=f"hmwrd:{subject_shr}:{day_offset + 14}")])
+    btns.append(CLOSE_BUTTON)
+    await msg.edit_text(text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(btns), disable_web_page_preview=True)
 
 async def UnkonwnCLBProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
     raise RuntimeError(f"Unknown callback_data[{u.callback_query.data}]!")
@@ -1535,19 +1571,22 @@ CLB_COMMANDS = {
     'show_choose_term_s': ShowChooseTermProc,
     'marks_by_term_s': MarksByTermProc,
     'show_final_marks_s': ShowFinalMarks,
-    'notification': ChangeNotications
+    'notification': ChangeNotications,
+    'hmwrd': HomeWorkCLBProc
 }
 #endregion
-
+print(f"Preparing DB...")
 PrepareDB()
 
 if (__name__ == '__main__'):
+    print("Preparing bot...")
     application = ApplicationBuilder().token(BOT_TOKEN).build()   
 
     application.add_handler(CommandHandler("menu", MenuProc))
     application.add_handler(CommandHandler("profile", ProfileProc))
     application.add_handler(CommandHandler("status", StatusProc))
     application.add_handler(CommandHandler("admin", AdminProc))
+    application.add_handler(CommandHandler("announce", AnnounceProc))
     application.add_handler(CommandHandler("start", StartProc))
     application.add_handler(CommandHandler("dz", HomeWorkCMDProc))
     application.add_handler(CommandHandler("app", AppCMDProc))
@@ -1557,6 +1596,7 @@ if (__name__ == '__main__'):
     application.add_handler(CallbackQueryHandler(CallbackProc))
     application.add_error_handler(ErrorProc)
     is_active = True
+    print("Starting main loop...")
     thr = threading.Thread(target=asyncio.run, args=(mainLoop(),),daemon=True)
     thr.start()
     #asyncio.run(Loop())
