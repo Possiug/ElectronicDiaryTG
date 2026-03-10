@@ -3,3 +3,7 @@ files/*
 __pycache__/*
 ed.db
 dev/*
+AndroidApp/.gradle
+AndroidApp/.idea
+AndroidApp/app/build
+AndroidApp/local.properties

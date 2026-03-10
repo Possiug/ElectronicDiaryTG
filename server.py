@@ -2,7 +2,7 @@ import os
 import json
 import sqlite3
 from datetime import datetime, timedelta
-from flask import Flask, abort, render_template
+from flask import Flask, abort, render_template, make_response
 from flask_cors import CORS, cross_origin
 
 DB_FILENAME = "ed.db"
@@ -349,6 +349,90 @@ def student_page(student_id: int):
 
     data_json = json.dumps(data, ensure_ascii=False, default=str)
     return render_template("main.html", data_json=data_json, _external=True)
+
+def get_quarter_by_date(school, class_name, date: str) -> int:
+    cursor.execute("SELECT number FROM periods WHERE school = ? AND class_name = ? AND ? >= date_from ORDER BY number DESC", (school, class_name, date))
+    res = cursor.fetchone()[0]
+    print(f"{date} - {res}")
+    return res
+
+def get_subject_with_grades(school: int, class_name: str, id: int):
+    cursor.execute(" \
+        SELECT sh.text, m.value, m.cost, m.date, m.text \
+        FROM marks m \
+        JOIN shortcuts sh ON sh.id = m.subject_shr \
+        WHERE m.school = ? AND m.student_id = ? \
+        ORDER BY sh.text, m.date", (school, id))
+    res = cursor.fetchall()
+    cur_subject = None
+    cur_dto = None
+    res_list = []
+    for i in res:
+        value = int(i[1])
+        if (value == 0):
+            continue
+        subject = i[0]
+        cost = i[2]
+        date = i[3]
+        comment = i[4]
+        is_final = comment == 'pSS:f1nAl'
+        quarter = get_quarter_by_date(school, class_name, date)
+        if (subject != cur_subject):
+            cur_subject = subject
+            cur_dto = {
+                'name': cur_subject,
+                'grades': []
+            }
+            print(cur_dto)
+            res_list.append(cur_dto)
+        
+        cur_dto['grades'].append({
+            'value': value,
+            'coefficient': cost,
+            'date': date,
+            'comment': comment,
+            'quarter': quarter
+        })
+    return res_list
+
+
+def get_homework(school, class_name, student_id):
+    cursor.execute("SELECT sh.text, l.homework, l.date " \
+    "FROM lessons l " \
+    "JOIN shortcuts sh ON sh.id = l.subject_shr " \
+    "WHERE l.school = ? AND l.class_name in (SELECT group_name FROM class_linking WHERE student_id = ? UNION SELECT ?) AND l.homework IS NOT NULL AND trim(cast(l.homework as text)) != '' ORDER BY l.date DESC",
+    (school, student_id, class_name,))
+    res_list = []
+    for i in cursor.fetchall():
+        res_list.append({
+            'subject': i[0],
+            'task': i[1],
+            'due_date': i[2]
+        })
+
+    return res_list
+
+
+@app.route("/api/diary/<student_access>")
+def get_app_data(student_access: str):
+    cursor.execute("SELECT school, class_name, student_id, alias FROM students WHERE invite_code = ?", (student_access,))
+    student = cursor.fetchone()
+    if (student is None):
+        return make_response('student not found!', 404)
+    subj_grades = get_subject_with_grades(student[0], student[1], student[2])
+    homework = get_homework(student[0], student[1], student[2])
+    profile = {
+        'student_id': student[2],
+        'class_name': student[1],
+        'school': student[0],
+        'name': student[3]
+    }
+    res = {
+        'profile': profile,
+        'homework': homework,
+        'subjects': subj_grades
+    }
+    return res
 
 
 if __name__ == "__main__":

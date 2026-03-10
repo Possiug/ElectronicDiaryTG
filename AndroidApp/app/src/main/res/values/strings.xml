@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Электронный дневник</string>
+    <string name="tab_summary">Сводка</string>
+    <string name="tab_homework">ДЗ</string>
+    <string name="tab_subjects">Предметы</string>
+    <string name="tab_support">Поддержка</string>
+    <string name="title_grades_summary">Общая сводка по оценкам</string>
+    <string name="title_homework">Домашние задания</string>
+    <string name="title_subjects">Предметы</string>
+    <string name="title_support">Техподдержка</string>
+    <string name="support_text">По вопросам работы приложения / подключения электронного дневника для своего класса писать в Telegram @rtroyanchi или @possiug</string>
+    <string name="average_grade">Средний балл</string>
+    <string name="grades_with_coefficients">Оценки с коэффициентами</string>
+    <string name="grade_default_comment">Оценка</string>
+    <string name="ok">OK</string>
+    <string name="error_cannot_open_data">Не удалось открыть файл данных</string>
+    <string name="error_parse_json">Ошибка парсинга JSON: %1$s</string>
+    <string name="error_network">Не удалось загрузить дневник с сервера. Проверьте подключение и что сервер запущен.</string>
+    <string name="error_student_not_found">Ученик с таким token не найден.</string>
+    <string name="loading">Загрузка дневника…</string>
+    <string name="quarter_1">1 четверть</string>
+    <string name="quarter_2">2 четверть</string>
+    <string name="quarter_3">3 четверть</string>
+    <string name="quarter_4">4 четверть</string>
+    <string name="section_final_grades">Итоговые оценки</string>
+    <string name="section_grades_by_subject">Оценки за период</string>
+    <string name="quarter_grade_column">Четвертная</string>
+    <string name="student_id_prompt">Введите token ученика (его можно получить из /profile в боте!)</string>
+    <string name="student_id_hint">token ученика</string>
+    <string name="student_id_save">Войти</string>
+    <string name="student_id_invalid">Введите корректный token</string>
+    <string name="tab_profile">Профиль</string>
+    <string name="title_profile">Профиль</string>
+    <string name="profile_student_id">Token ученика</string>
+    <string name="profile_class">Класс</string>
+    <string name="profile_school">Школа №</string>
+    <string name="profile_name">ФИО</string>
+    <string name="profile_logout">Выйти</string>
+</resources>

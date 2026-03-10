@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="color_bg">#F8F6F1</color>
+    <color name="color_card">#FFFFFF</color>
+    <color name="color_primary">#2D5A87</color>
+    <color name="color_accent">#E8B86D</color>
+    <color name="color_text">#2C3E50</color>
+    <color name="color_text_muted">#7F8C8D</color>
+    <color name="color_success">#27AE60</color>
+    <color name="color_warning">#F39C12</color>
+    <color name="color_grade_high_bg">#E8F5E9</color>
+    <color name="color_grade_mid_bg">#FFF8E1</color>
+    <color name="color_grade_low_bg">#FFEBEE</color>
+    <color name="color_grade_high">#27AE60</color>
+    <color name="color_grade_mid">#F57C00</color>
+    <color name="color_grade_low">#C62828</color>
+</resources>

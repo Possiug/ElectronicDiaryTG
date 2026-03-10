@@ -525,7 +525,7 @@ async def StartCommandProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if(file == None):
             await msg.reply_html(f"Файл не найден!",reply_markup=DEV_CLOSE_RPMK)
             return
-        await chat.send_document(InputFile(open(file[0], 'rb').read(), filename=file[1]), caption=f"Файл", write_timeout=30, read_timeout= 30)
+        await chat.send_document(InputFile(open(file[0], 'rb').read(), filename=file[1]), caption=f"Файл", write_timeout=30, read_timeout= 30, connect_timeout=15, pool_timeout=15)
     elif(code.startswith("pea")):
         student_code = code[3:]
         cursor.execute("SELECT id, alias, school, class_name, status FROM students WHERE invite_code = ?", (student_code,))
@@ -541,14 +541,14 @@ async def StartCommandProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         is_loggedin = student[4] == "student"
         buttons = []
         if(is_loggedin):
-            buttons.append([InlineKeyboardButton("Завершить сессию", callback_data=f"kick_t:{journal[0]}:{student[0]}")])
+            buttons.append([InlineKeyboardButton("Завершить сессию", callback_data=f"regenlink_t:{journal[0]}:{student[0]}")])
         else:
             buttons.append([InlineKeyboardButton("Сменить ссылку", callback_data=f"regenlink_t:{journal[0]}:{student[0]}")])
         buttons.append([InlineKeyboardButton("Удалить ученика", callback_data=f"predelete_student:{journal[0]}:{student[0]}")])
         buttons.append([InlineKeyboardButton("Отправить ссылку", url=f"https://t.me/share/url?url={urllib.parse.quote_plus(f"{student[1]}, присоединяйтесь к ЭД: {GetInviteLink(student_code)}")}")])
         buttons.append(CLOSE_BUTTON)
 
-        await msg.reply_html(f"<blockquote>Школа: {student[2]}\nКласс: {student[3]}\nФамилия имя: {student[1]}\nСтатус: {"войден" if is_loggedin else "приглашен"}</blockquote>\nСсылка-приглашение: <code>{GetInviteLink(code)}</code>\n\n<b>Выберите действие:</b>", reply_markup=InlineKeyboardMarkup(buttons))
+        await msg.reply_html(f"<blockquote>Школа: {student[2]}\nКласс: {student[3]}\nФамилия имя: {student[1]}\nСтатус: {"войден" if is_loggedin else "приглашен"}</blockquote>\nСсылка-приглашение: <code>{GetInviteLink(student_code)}</code>\n\n<b>Выберите действие:</b>", reply_markup=InlineKeyboardMarkup(buttons))
     elif(code.startswith("hws")):
         subject_shr = code[3:]
         cursor.execute("SELECT student_id, school, class_name FROM students WHERE tid = ?", (sender.id,))
@@ -767,6 +767,7 @@ async def StartProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         if(code.startswith('ycode')):
             code = code[5:]
+            print(f"searching for ycode: {code}")
             cursor.execute("SELECT school, class_name, alias FROM students WHERE tid = ?", (sender.id,))
             already = cursor.fetchone()
             if(already != None):
@@ -785,7 +786,7 @@ async def StartProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ProfileProc(update: Update, context: ContextTypes.DEFAULT_TYPE, edit = False):
     msg = update.effective_message
     sender = update.effective_sender
-    cursor.execute("SELECT id, student_id, school, class_name, alias, send_dz, send_marks FROM students WHERE tid = ?", (sender.id,))
+    cursor.execute("SELECT id, student_id, school, class_name, alias, send_dz, send_marks, invite_code FROM students WHERE tid = ?", (sender.id,))
     student = cursor.fetchone()
     if(student == None):
         await msg.reply_html(f"Вы еще не привязаны к электронному дневнику! Попросите у вашего учителя ссылку для привязки!", reply_markup=CLOSE_RPMK)
@@ -799,7 +800,7 @@ async def ProfileProc(update: Update, context: ContextTypes.DEFAULT_TYPE, edit =
             CLOSE_BUTTON
         ]
     )
-    text = f"Ученик:\n<blockquote>Школа: {student[2]}\nКласс: {student[3]}\nФамилия имя: {student[4]}</blockquote>\nУведомления о:\n<blockquote>Дз: {"включены" if student[5] == 1 else "выключены"}\nОценках: {"включены" if student[6] == 1 else "выключены"}</blockquote>"
+    text = f"Ученик:\n<blockquote>Школа: {student[2]}\nКласс: {student[3]}\nФамилия имя: {student[4]}</blockquote>\nToken: <code>{student[7]}</code>\nУведомления о:\n<blockquote>Дз: {"включены" if student[5] == 1 else "выключены"}\nОценках: {"включены" if student[6] == 1 else "выключены"}</blockquote>"
     if (edit):
         await msg.edit_text(text, parse_mode='HTML', reply_markup=rpmk)
     else:
@@ -1254,7 +1255,7 @@ async def RegenLinkProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, ch
     if (student[1] != 0):
         try: await c.bot.send_message(chat_id=student[1], text="Ваш учитель завершил вашу сессию, попросите у него новую ссылку для авторизации!\nЕсли считаете это ошибкой, сообщиете разработчику", reply_markup=DEV_CLOSE_RPMK)
         except: pass
-    cursor.execute("UPDATE students SET invite_code = ?, tid = 0 WHERE id = ?",
+    cursor.execute("UPDATE students SET invite_code = ?, tid = 0, status = \"invite\" WHERE id = ?",
                    (new_code, sid))
     await msg.edit_text(f"Ученик был выброшен и его ссылка была изменена!\nСсылка: {GetInviteLink(new_code)}", reply_markup=CLOSE_RPMK)
 

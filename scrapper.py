@@ -22,15 +22,13 @@ time_to_sleep = 0
 
 
 
-
-
 async def mainLoop():
     global time_to_sleep
     while True:
         time_to_sleep = 60*60
         while time_to_sleep > 0:
             current_h = datetime.now().hour
-            print(time_to_sleep)
+            print(f"\033[1A\r\033[K{time_to_sleep}")
             if(current_h > 23 or current_h < 5):
                 await asyncio.sleep(1)
             await asyncio.sleep(1)
