@@ -2,7 +2,7 @@ import os
 import json
 import sqlite3
 from datetime import datetime, timedelta
-from flask import Flask, abort, render_template, make_response
+from flask import Flask, abort, render_template, make_response, send_file
 from flask_cors import CORS, cross_origin
 
 DB_FILENAME = "ed.db"
@@ -397,17 +397,29 @@ def get_subject_with_grades(school: int, class_name: str, id: int):
 
 
 def get_homework(school, class_name, student_id):
-    cursor.execute("SELECT sh.text, l.homework, l.date " \
+    cursor.execute("SELECT sh.text, l.homework, l.date, l.id " \
     "FROM lessons l " \
     "JOIN shortcuts sh ON sh.id = l.subject_shr " \
     "WHERE l.school = ? AND l.class_name in (SELECT group_name FROM class_linking WHERE student_id = ? UNION SELECT ?) AND l.homework IS NOT NULL AND trim(cast(l.homework as text)) != '' ORDER BY l.date DESC",
     (school, student_id, class_name,))
     res_list = []
-    for i in cursor.fetchall():
+    lessons = cursor.fetchall()
+    cursor.execute("SELECT id, file_name, lesson_id FROM files WHERE school = ? AND lesson_id IN (SELECT id FROM lessons WHERE school = ? AND class_name in (SELECT group_name FROM class_linking WHERE student_id = ? UNION SELECT ?))", (school, school, student_id, class_name))
+    files = cursor.fetchall()
+    f_res: dict[int, list[dict]] = {}
+    for i in files:
+        tmp = f_res.get(i[2], [])
+        tmp.append({
+            "name": i[1],
+            "id": i[0]
+        })
+        f_res[i[2]] = tmp
+    for i in lessons:
         res_list.append({
             'subject': i[0],
             'task': i[1],
-            'due_date': i[2]
+            'due_date': i[2],
+            'files': f_res.get(i[3], [])
         })
 
     return res_list
@@ -434,6 +446,22 @@ def get_app_data(student_access: str):
     }
     return res
 
+
+@app.route("/api/file/<student_access>/<int:file_id>")
+def get_file(student_access: str, file_id: int):
+    cursor.execute("SELECT id FROM students WHERE invite_code = ?", (student_access,))
+    student = cursor.fetchone()
+    if (student is None):
+        return make_response('Access denided', 404)
+    cursor.execute("SELECT file, file_name FROM files WHERE id = ?", (file_id,))
+    sql_ans = cursor.fetchone()
+    if (sql_ans is None):
+        return make_response("{\"err\":\"1\", \"error_msg\":\"File not found!\"}", 404)
+    fn = sql_ans[0]
+    name = sql_ans[1]
+    if (not os.path.exists(fn)):
+        return make_response("{\"err\":\"2\", \"error_msg\":\"File not downloaded!\"}", 404)
+    return send_file(fn, download_name=name)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
