@@ -850,7 +850,7 @@ async def AppCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     url = f"{WEB_APP_URL}/student/{student[0]}"
     app_download = f"{WEB_APP_URL}/download/android"
-    await msg.reply_text(f"Электронный дневник так же доступен на сайте или в приложение для Android!\n\nНЕ ПЕРЕСЫЛАЙТЕ ЭТИ ДАННЫЕ, они дает доступ к вашим оценкам! Их можно сбросить в профиле /profile\n\n<a href=\"{url}\">Cайт</a>\n\n<a href=\"{app_download}\">Android приложение</a>", parse_mode='HTML')
+    await msg.reply_text(f"Электронный дневник так же доступен на сайте или в приложение для Android!\n<b>Откройте ссылку для скачивания в браузере!</b>\n\nНЕ ПЕРЕСЫЛАЙТЕ ЭТИ ДАННЫЕ, они дает доступ к вашим оценкам! Их можно сбросить в профиле /profile\n\n<a href=\"{url}\">Cайт</a>\n\n<a href=\"{app_download}\">Android приложение</a>", parse_mode='HTML')
 
 async def MarksCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat

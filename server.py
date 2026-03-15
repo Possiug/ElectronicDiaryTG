@@ -463,7 +463,7 @@ def get_file(student_access: str, file_hash):
 
 @app.route("/download/android")
 def download_android():
-    return send_file("resources/android.apk", download_name="diary.apk")
+    return send_file("resources/android.apk", as_attachment=True, download_name='dairy.apk')
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
