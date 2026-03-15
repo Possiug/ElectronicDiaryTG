@@ -108,6 +108,14 @@ h2{
   font-size:20px;
 }
 
+.dz_file:link {
+  color: cyan;
+}
+
+.dz_file:visited {
+  color: rgb(41, 165, 165);
+}
+
 .muted{
   color:var(--muted);
   font-size:14px;

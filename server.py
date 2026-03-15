@@ -16,18 +16,14 @@ app.config['CORS_HEADERS'] = 'Content-Type'
 
 # ============= Работа с БД =============
 
-def get_student_by_student_id(student_id: int):
-    """
-    Ищем по students.student_id (ID в Параграфе),
-    а не по локальному students.id.
-    """
+def get_student_by_student_token(student_access: str):
     cursor.execute(
         """
         SELECT id, school, class_name, student_id, alias
         FROM students
-        WHERE student_id = ?
+        WHERE invite_code = ?
         """,
-        (student_id,),
+        (student_access,),
     )
     row = cursor.fetchone()
     if not row:
@@ -38,6 +34,7 @@ def get_student_by_student_id(student_id: int):
         "class_name": row[2],
         "student_id": row[3],
         "alias": row[4],
+        "token": student_access
     }
 
 
@@ -181,6 +178,7 @@ def build_homework_data(student: dict):
     school     = student["school"]
     class_name = student["class_name"]
     stud_par   = student["student_id"]
+    token   = student["token"]
 
     # какие предметы вообще есть у ученика
     cursor.execute(
@@ -239,7 +237,7 @@ def build_homework_data(student: dict):
                 (school, lesson_id),
             )
             files_rows = cursor.fetchall()
-            files = [{"hash": h, "name": n} for (h, n) in files_rows]
+            files = [{"hash": h, "name": n, "link": f"/api/file/{token}/{h}"} for (h, n) in files_rows]
 
             text = hw_text if hw_text is not None else ""
             # если нет текста и нет файлов – смысла выводить строку нет
@@ -265,11 +263,11 @@ def build_homework_data(student: dict):
     return result
 
 
-def build_student_data(student_id_from_url: int):
+def build_student_data(student_access: str):
     """
     Основная структура для фронта.
     """
-    student = get_student_by_student_id(student_id_from_url)
+    student = get_student_by_student_token(student_access)
     if not student:
         return None
 
@@ -340,10 +338,10 @@ def build_student_data(student_id_from_url: int):
 
 # ============= Роут =============
 
-@app.route("/student/<int:student_id>")
+@app.route("/student/<student_access>")
 @cross_origin()
-def student_page(student_id: int):
-    data = build_student_data(student_id)
+def student_page(student_access: int):
+    data = build_student_data(student_access)
     if not data:
         abort(404, "Ученик не найден")
 
@@ -447,13 +445,13 @@ def get_app_data(student_access: str):
     return res
 
 
-@app.route("/api/file/<student_access>/<int:file_id>")
-def get_file(student_access: str, file_id: int):
+@app.route("/api/file/<student_access>/<file_hash>")
+def get_file(student_access: str, file_hash):
     cursor.execute("SELECT id FROM students WHERE invite_code = ?", (student_access,))
     student = cursor.fetchone()
     if (student is None):
         return make_response('Access denided', 404)
-    cursor.execute("SELECT file, file_name FROM files WHERE id = ?", (file_id,))
+    cursor.execute("SELECT file, file_name FROM files WHERE hashsum = ?", (file_hash,))
     sql_ans = cursor.fetchone()
     if (sql_ans is None):
         return make_response("{\"err\":\"1\", \"error_msg\":\"File not found!\"}", 404)
@@ -462,6 +460,10 @@ def get_file(student_access: str, file_id: int):
     if (not os.path.exists(fn)):
         return make_response("{\"err\":\"2\", \"error_msg\":\"File not downloaded!\"}", 404)
     return send_file(fn, download_name=name)
+
+@app.route("/download/android")
+def download_android():
+    return send_file("resources/android.apk", download_name="diary.apk")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

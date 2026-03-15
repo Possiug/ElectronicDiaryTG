@@ -616,7 +616,7 @@ def GenerateDIDfromUserdata(ud:dict):
     return GenerateDID(ud['school_web'], ud["login"], ud['password'])
 
 def GetStudentCode(k):
-    return hashlib.md5(f"{k}{RandomWord(5)}".encode('utf-8')).hexdigest()
+    return hashlib.md5(f"{k}{RandomWord(10)}".encode('utf-8')).hexdigest()
 
 def GetShortcutId(text:str):
     cursor.execute("INSERT OR IGNORE INTO shortcuts (text) VALUES (?)", (text,))
@@ -794,8 +794,9 @@ async def ProfileProc(update: Update, context: ContextTypes.DEFAULT_TYPE, edit =
     rpmk = InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("Обновить имя",callback_data=f"update_fio_s")],
-            [InlineKeyboardButton("Выкл дз.", callback_data="notification:dd") if student[5] == 1 else InlineKeyboardButton("Вкл дз.", callback_data="notification:ed")],
-            [InlineKeyboardButton("Выкл оценки", callback_data="notification:dm") if student[6] == 1 else InlineKeyboardButton("Вкл оценки", callback_data="notification:em")],
+            [InlineKeyboardButton("Выкл дз.", callback_data="notification:dd") if student[5] == 1 else InlineKeyboardButton("Вкл дз.", callback_data="notification:ed"),
+            InlineKeyboardButton("Выкл оценки", callback_data="notification:dm") if student[6] == 1 else InlineKeyboardButton("Вкл оценки", callback_data="notification:em")],
+            [InlineKeyboardButton("Сбросить токен", callback_data="token:reset")],
             [InlineKeyboardButton("Выйти",callback_data="logout_s")], 
             CLOSE_BUTTON
         ]
@@ -842,16 +843,14 @@ async def AppCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     msg = update.effective_message
     sender = update.effective_sender
-    cursor.execute("SELECT student_id FROM students WHERE tid = ?", (sender.id,))
+    cursor.execute("SELECT invite_code FROM students WHERE tid = ?", (sender.id,))
     student = cursor.fetchone()
     if(student == None):
         await msg.reply_html(f"Вы еще не привязаны к электронному дневнику! Попросите у вашего учителя ссылку для привязки!", reply_markup=CLOSE_RPMK)
         return
     url = f"{WEB_APP_URL}/student/{student[0]}"
-    rpmk = InlineKeyboardMarkup([[
-        InlineKeyboardButton("Открыть дневник", web_app=WebAppInfo(url=url)),
-    ], CLOSE_BUTTON])
-    await msg.reply_text(f"Электронный дневник так же доступен на сайте (НЕ ПЕРЕСЫЛАЙТЕ ЭТУ ССЫЛКУ, она дает доступ к вашим оценкам!): {url}")
+    app_download = f"{WEB_APP_URL}/download/android"
+    await msg.reply_text(f"Электронный дневник так же доступен на сайте или в приложение для Android!\n\nНЕ ПЕРЕСЫЛАЙТЕ ЭТИ ДАННЫЕ, они дает доступ к вашим оценкам! Их можно сбросить в профиле /profile\n\n<a href=\"{url}\">Cайт</a>\n\n<a href=\"{app_download}\">Android приложение</a>", parse_mode='HTML')
 
 async def MarksCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -1518,6 +1517,20 @@ async def HomeWorkCLBProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, 
 
 async def UnkonwnCLBProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
     raise RuntimeError(f"Unknown callback_data[{u.callback_query.data}]!")
+
+
+
+async def TokenProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:Chat, sender:User, args:list[str]):
+    cmd = args[0]
+    if (cmd == 'reset'):
+        cursor.execute("SELECT student_id FROM students WHERE tid = ?", (sender.id,))
+        user = cursor.fetchone()
+        if (user is None):
+            await msg.edit_text("Вы не вошли в профиль!")
+            return
+        cursor.execute("UPDATE students SET invite_code = ? WHERE tid = ?", (GetStudentCode(user[0]), sender.id))
+        await msg.edit_text("Токен доступа успешно сброшен", reply_markup=CLOSE_RPMK)      
+
 #endregion
 
 
@@ -1573,7 +1586,8 @@ CLB_COMMANDS = {
     'marks_by_term_s': MarksByTermProc,
     'show_final_marks_s': ShowFinalMarks,
     'notification': ChangeNotications,
-    'hmwrd': HomeWorkCLBProc
+    'hmwrd': HomeWorkCLBProc,
+    "token": TokenProc
 }
 #endregion
 print(f"Preparing DB...")

@@ -375,8 +375,8 @@ function renderHomework() {
       if (files.length) {
         const filesLinks = files.map(f => {
           // ссылка на бота с файлом (как в боте: qfile{hash})
-          const url = `https://t.me/pss_ednevnik_bot?start=qfile${f.hash}`;
-          return `<a href="${url}" target="_blank">${f.name}</a>`;
+          const url = f.link;
+          return `<a href="${url}" class="dz_file" target="_blank">${f.name}</a>`;
         }).join(', ');
         textHtml += (textHtml ? '<br>' : '') + `<span class="muted">Файлы: ${filesLinks}</span>`;
       }
