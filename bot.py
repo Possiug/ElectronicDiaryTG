@@ -216,6 +216,15 @@ DEV_CLOSE_RPMK = InlineKeyboardMarkup([DEV_BUTTON, CLOSE_BUTTON])
 #region Async Utils
 
 async def mainLoop():
+    # cursor.execute("SELECT alias, invite_code, tid FROM students WHERE tid != 0")
+    # for i in cursor.fetchall():
+    #     try:
+    #         print(f"sending to {i[0]} {i[2]}")
+    #         await application.bot.send_message(i[2], f"Уважаемый(ая) {i[0]}, бот будет отключен неопределенное время, для поддержания работоспособности дневника. Высылаю вам\n1) Ваш токен: <code>{i[1]}</code>\n\n2) Вашу персональную ссылку на сайт с электронным дневником (сохраните ее): http://188.227.14.206:5000/student/{i[1]}\n\n3) Cсылку на скачивание приложения для Android: http://188.227.14.206:5000/download/android\n\nВсе последующие оповещения и изменения будут публиковаться в канале: @EDiaryDev\n\nСпасибо что вы с нами!", parse_mode='HTML')
+    #         time.sleep(0.25)
+    #     except Exception as e:
+    #         print(f"error in chat: {i[2]} e: {e}")
+
     global time_to_sleep
     while True:
         time_to_sleep = 60*60
@@ -1612,11 +1621,12 @@ if (__name__ == '__main__'):
     application.add_error_handler(ErrorProc)
     is_active = True
     print("Starting main loop...")
+    # asyncio.run(mainLoop())
     thr = threading.Thread(target=asyncio.run, args=(mainLoop(),),daemon=True)
     thr.start()
-    #asyncio.run(Loop())
+    # asyncio.run(Loop())
     #exit()
-
+    # input()
     try:
         application.run_polling()
     except: pass

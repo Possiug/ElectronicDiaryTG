@@ -1,17 +1,29 @@
 import requests
+from requests import exceptions
+import urllib3
 import re
 from dnevnik_types import *
 
 class Dnevnik:
-    api:str = None
-    cookies:dict = None
-    username:str = None
-    password:str = None
+    api: str = None
+    cookies: dict = None
+    username: str = None
+    password: str = None
+    is_ssl_on: bool = None
     def __init__(self, host:str):
         if(not re.match("[0-9a-bA-BА-Яа-яЁё.]*.[a-bA-BА-Яа-яЁё.]*", host)):
             raise RuntimeError("Invalid host!")
         h = f"https://{host}"
-        res = requests.get(h)
+        res = None
+        self.is_ssl_on = True
+        try:
+            res = requests.get(h)
+        except exceptions.SSLError as e:
+            print(e)
+            print("Https unavailable, tring http...")
+            res = requests.get(h, verify=False)
+            self.is_ssl_on = False
+            urllib3.disable_warnings()
         if(not res.ok):
             raise ConnectError(f"request status code: {res.status_code}")
         print(f"Successfuly init Dnevnik!")
@@ -26,7 +38,7 @@ class Dnevnik:
             if(self.password == None): raise RuntimeError("No password provided!")
             password = self.password
         
-        res = requests.post(f"{self.api}/login?user-name={login}&user-password={password}", timeout=5000)
+        res = requests.post(f"{self.api}/login?user-name={login}&user-password={password}", timeout=5000, verify=self.is_ssl_on)
         if(not res.ok):
             raise LoginError(f"Unauthorized {res.text}")
         self.password = password
@@ -86,11 +98,11 @@ class Dnevnik:
 
     def _get_request_(self, path):
         # print("[low level] request")
-        res = requests.get(f"{self.api}{path}", cookies=self.cookies, timeout=10)
+        res = requests.get(f"{self.api}{path}", cookies=self.cookies, timeout=10, verify=self.is_ssl_on)
         if(res.status_code == 401):
             self.Login()
             print("[low level] request again")
-            res = requests.get(f"{self.api}{path}", cookies=self.cookies, timeout=10)
+            res = requests.get(f"{self.api}{path}", cookies=self.cookies, timeout=10, verify=self.is_ssl_on)
         if(not res.ok):
             raise RuntimeError(f"Error in request({path}): status: {res.status_code} answer: {res.text}")
         # print("[low level] answer")
