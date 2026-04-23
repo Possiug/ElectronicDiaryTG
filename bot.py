@@ -3,6 +3,7 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Messa
 import sqlite3
 from dnevnik import Dnevnik
 from dnevnik_types import *
+from greate_logger import Logger as LG
 import string
 import threading
 import random
@@ -43,14 +44,16 @@ class UStates:
     UNKNOWN = "unknown"
 
 
-users_state:dict[int, str] = {}
-users_data:dict[int, dict] = {}
-dnevniks:dict[str, Dnevnik] = {}
+users_state: dict[int, str] = {}
+users_data: dict[int, dict] = {}
+dnevniks: dict[str, Dnevnik] = {}
+lessons_to_file_search: list[tuple[Dnevnik, int, int]] = []
 last_update = {'start': 0, 'stop': 0}
 time_to_sleep = 0
 
 
 def PrepareDB():
+    logger.log(f"Preparing DB...")
     cursor.execute('''CREATE TABLE IF NOT EXISTS schools (
                 number INTEGER UNIQUE,
                 name TEXT NOT NULL,
@@ -216,27 +219,23 @@ DEV_CLOSE_RPMK = InlineKeyboardMarkup([DEV_BUTTON, CLOSE_BUTTON])
 #region Async Utils
 
 async def mainLoop():
-    # cursor.execute("SELECT alias, invite_code, tid FROM students WHERE tid != 0")
-    # for i in cursor.fetchall():
-    #     try:
-    #         print(f"sending to {i[0]} {i[2]}")
-    #         await application.bot.send_message(i[2], f"Уважаемый(ая) {i[0]}, бот будет отключен неопределенное время, для поддержания работоспособности дневника. Высылаю вам\n1) Ваш токен: <code>{i[1]}</code>\n\n2) Вашу персональную ссылку на сайт с электронным дневником (сохраните ее): http://188.227.14.206:5000/student/{i[1]}\n\n3) Cсылку на скачивание приложения для Android: http://188.227.14.206:5000/download/android\n\nВсе последующие оповещения и изменения будут публиковаться в канале: @EDiaryDev\n\nСпасибо что вы с нами!", parse_mode='HTML')
-    #         time.sleep(0.25)
-    #     except Exception as e:
-    #         print(f"error in chat: {i[2]} e: {e}")
+
 
     global time_to_sleep
     while True:
         time_to_sleep = 60*60
+        print()
         while time_to_sleep > 0:
             current_h = datetime.now().hour
             print(f"\033[1A\r\033[K{time_to_sleep}")
+            if (len(lessons_to_file_search) != 0):
+                await PostProcessLesson(*lessons_to_file_search.pop())
             if(current_h > 23 or current_h < 5):
                 await asyncio.sleep(1)
             await asyncio.sleep(1)
             time_to_sleep -= 1
             if not (is_active): 
-                print("main loop falling down")
+                logger.info("main loop falling down")
                 exit()
             if(time_to_sleep%10 == 0):  
                 try:
@@ -258,9 +257,9 @@ async def UpdateData():
             password = i[5]
             teacher_tid = i[6]
             try:
-                d = GetOrCreateDnevnik(website, login, password)
+                d = await GetOrCreateDnevnik(website, login, password)
             except ConnectError as e:
-                print(f"Error in connection to school website: {e}")
+                logger.error(f"Error in connection to school website: {e}")
             except LoginError:
                 cursor.execute("UPDATE dnevniks SET is_active = 0 WHERE id = ?", (jid,))
                 await application.bot.send_message(teacher_tid, f"<b>Внимание!</b>\nКажется у вас сменились логин или пароль к ЭД!\nИх необходимо обновить в боте, иначе ваш класс не сможет им пользоваться!\n<blockquote>Школа: {school}\nКласс: {class_name}\nВебсайт: {website}</blockquote>\n<i>При возникновении затруднений, обращайтесь к разработчику!</i>",parse_mode='HTML', reply_markup=InlineKeyboardMarkup[[InlineKeyboardButton("Редактировать", callback_data=f"edit_journal_t:{i[0]}")], DEV_BUTTON])
@@ -268,14 +267,14 @@ async def UpdateData():
                 # for j in cursor.fetchall():
                 #     pass
             except Exception as e:
-                print(f"Unexpected failture: {e}")
-            classes = d.GetClasses()
+                logger.error(f"Unexpected failture: {e}")
+            classes = await d.GetClasses()
             for k,v in classes.items():
                 if (not k.startswith(class_name)): continue
                 for j in v:
                     t = time.time()
-                    data = d.GetData(j)
-                    print(f"\tGetData complited in {time.time()-t}")
+                    data = await d.GetData(j)
+                    logger.info(f"GetData complited in {time.time() - t}")
                     t = time.time()
                     journal = data['journal']
                     subject = journal['subject_name']
@@ -283,17 +282,17 @@ async def UpdateData():
                     periods:list[dict] = data['periods']
                     subject_shr = GetShortcutId(subject)
                     teacher_name = journal['teacher_name']
-                    print(f"Processing subject {subject}, teacher: {teacher_name}")
+                    logger.info(f"Processing subject {subject}, teacher: {teacher_name}")
                     cursor.execute("SELECT COUNT(*) FROM periods WHERE school = ? AND class_name = ?",
                                    (school, class_name))
                     pcount = cursor.fetchone()[0]
-                    print("\tAdding periods...")
+                    logger.info("\tAdding periods...")
                     if (pcount != len(periods)):
                         for n, i in enumerate(periods, start=1):
                             cursor.execute("INSERT OR IGNORE INTO periods (school, class_name, date_from, date_to, number) VALUES (?, ?, ?, ?, ?)", 
                                            (school, class_name, i['date_from'], i['date_to'], n))
                     excluded = set()
-                    print("\tExcluding students...")
+                    logger.log("\tExcluding students...")
                     for i in members:
                         movements = i['movements'][-1]
                         if (movements['date_out'] != ''):
@@ -312,7 +311,7 @@ async def UpdateData():
                                             (school, class_name, i['id'], subject_shr, k)
                                            )
                     
-                    print("\tProcessing lessons...")
+                    logger.log("\tProcessing lessons...")
                     lessons:list[dict] = data['lessons']
                     lsndate = {}
                     for i in lessons:
@@ -320,7 +319,7 @@ async def UpdateData():
                         lsndate[lesson_id] = i['date']
                         sus = i['lt'] # check for final lesson and V-type lesson
                         if (sus != ''):
-                            print('\t\tskipping')
+                            logger.log('\t\tskipping')
                             continue
                         typ = GetTypeFromId(i['lesson_type'], data['lesson_types'])
                         cursor.execute("SELECT homework FROM lessons WHERE school = ? AND id = ?", (school, lesson_id))
@@ -329,12 +328,12 @@ async def UpdateData():
                             if(al[0] != i['homework']):
                                 cursor.execute("UPDATE lessons SET homework = ? WHERE school = ? AND id = ?", (i['homework'], school, lesson_id))
                         if(datetime.strptime(i['date'], '%Y-%m-%d').date() > datetime.now().date() - timedelta(7)):
-                            asyncio.create_task(PostProcessLesson(website, login, password, school, k, j, lesson_id))
+                            lessons_to_file_search.append((website, login, password, school, k, j, lesson_id))
+                            # asyncio.create_task(PostProcessLesson(website, login, password, school, k, j, lesson_id))
                         cursor.execute("INSERT OR IGNORE INTO lessons (school, class_name, id, type_shr, subject_shr, num, homework, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
                                        (school, k, lesson_id, GetShortcutId(typ['name']), subject_shr, int(i['num']), i['homework'], i['date'])
                                        )
-                        #print(f"\tAdded lesson {lesson_id}")
-                    print("\tProcessing controls...")
+                    logger.log("\tProcessing controls...")
                     controls:list[dict[str, str]] = data['controls']
                     ctrls:dict[str, dict[str, str]] = {}
                     for i in controls:
@@ -345,7 +344,7 @@ async def UpdateData():
                             'text': i['text'],
                             'short': i.get('short', '')
                         }
-                    print("\tPhantoming marks...")
+                    logger.log("\tPhantoming marks...")
                     marks = data['marks']
                     real_marks = set()
                     cursor.execute("SELECT mark_id FROM marks WHERE school = ? AND subject_shr = ? AND student_id IN (SELECT student_id FROM students WHERE school = ? AND class_name = ? UNION SELECT student_id FROM class_linking WHERE school = ? AND group_name = ? AND subject_shr = ?)", 
@@ -353,7 +352,7 @@ async def UpdateData():
                                    )
                     phantom_marks:set[int] = set([i[0] for i in cursor.fetchall()])
                     mark_type_cache = {}
-                    print("\tProcessing mark types...")
+                    logger.log("\tProcessing mark types...")
                     for i in data['mark_types']:
                         for j in i['marks']:
                             mark_type_cache[j['id']] = {
@@ -368,7 +367,7 @@ async def UpdateData():
                         'cost': 0,
                         'key': '!'
                     }
-                    print("\tProcessing marks...")
+                    logger.info("\tProcessing marks...")
                     for i in marks:
                         m_id:str = i['id'] 
                         if (i['student_id'] in excluded): continue
@@ -386,22 +385,23 @@ async def UpdateData():
                             i['text'] = 'pSS:f1nAl'
                         else:
                             typ = GetTypeFromId(control['type_id'], data['control_types'])
-                        print(f"\t\tmark_typ: {type(typ)}  mark_key: {type(key)}")
+                        logger.log("\t\tNew mark detected")
                         cursor.execute("INSERT OR IGNORE INTO marks (school, mark_id, mark_char, shortname, subject_shr, student_id, value, cost, text, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                                         (school, m_id, key['key'], typ['shortname'], subject_shr, i['student_id'], float(key['cost']), float(typ['cost']), i['text'], lsndate[control['lesson_id']])
                                     )
                         
-                    print("\tMatching marks...")
-                    print(f"\t\t{len(phantom_marks)}")
-                    print(f"\t\t{len(real_marks)}")
+                    logger.info("\tMatching marks...")
+                    logger.log(f"\t\tОценок: {len(phantom_marks)}")
+                    logger.log(f"\t\tРеальных: {len(real_marks)}")
                     for i in phantom_marks:
                         if not i in real_marks:
-                            print(f"\t\tdeleting mark {i}")
+                            logger.log(f"\t\tDeleting mark {i}")
                             cursor.execute("DELETE FROM marks WHERE school = ? AND mark_id = ?", (school, i))
-                    print(f"\tData parsing complited in {time.time()-t}\n\tSleeping...")
-                    time.sleep(2)
+                    logger.info(f"\tData parsing complited in {time.time()-t}")
+                    logger.log("\tSleeping...")
+                    await asyncio.sleep(2)
         except Exception as e:
-            print(f"fatal exception happend: {e}")
+            logger.handle_error(e)
     last_update["stop"] = time.time()
 
 async def EventProc():
@@ -420,7 +420,7 @@ async def EventProc():
             mark_id:int = i[7]
             extra:str = i[8]
             date = i[9]
-            print(f"Processing {event_type} event: {i}")
+            logger.log(f"Processing {event_type} event: {i}")
             if (event_type == 'lesson_added'):
                 if (extra.strip() == ''):
                     continue
@@ -457,41 +457,45 @@ async def EventProc():
             elif (event_type == 'log_out'):
                 try:
                     await application.bot.send_message(student_id, f"Внимание, вас выбросило из профиля!\n<blockquote>Школа: {school}\nКласс: {class_name}\nПричина: <b>{extra}</b></blockquote>", parse_mode='HTML',reply_markup=DEV_RPMK,disable_web_page_preview=True)
-                    time.sleep(1)
+                    # time.sleep(1)
+                    await asyncio.sleep(1)
                 except Exception as e:
-                    print(f"Sending failed: {e}")
+                    logger.error(f"Sending failed: {e}")
             elif (event_type == 'student_deleted'):
                 try: 
                     await application.bot.send_message(chat_id=student_id, text=f"Вы были удалены из журнала!\n<blockquote>Школа: {school}\nКласс: {class_name}</blockquote>\nЕсли вы покинули ваш класс, то удачи вам)\nЕсли считаете это ошибкой, сообщиете разработчику", reply_markup=DEV_CLOSE_RPMK)
-                    time.sleep(0.5)
+                    # time.sleep(0.5)
+                    await asyncio.sleep(0.5)
                 except Exception as e:
-                    print(f"Sending failed: {e}")
+                    logger.error(f"Sending failed: {e}")
                 
         except Exception as e:
-            print(f"Error processing event: {e}")
-            time.sleep(4)
+            logger.error(f"Error processing event: {e}")
+            # time.sleep(4)
+            await asyncio.sleep(4)
     for k,v in msgs.items():
         try:
             await application.bot.send_message(k, v, parse_mode='HTML', reply_markup=DEV_CLOSE_RPMK)
         except Exception as e:
-            print(f"SEND MSG EX: {e}")
-        time.sleep(0.2)
+            logger.error(f"SEND MSG EX: {e}")
+        await asyncio.sleep(0.2)
+        # time.sleep(0.2)
     cursor.execute(f"DELETE FROM events WHERE id IN ({','.join([f"{i[0]}" for i in events])})")
 
 async def PostProcessLesson(website, login, password, school, class_name, journal_id, lesson_id):
-    print(f"started files proc for: {class_name} - {datetime.now().strftime("%Y-%m-%d %H:%M")}")
-    time.sleep(1.5)
-    d = GetOrCreateDnevnik(website, login, password)
-    lesson:dict = d.GetLessonInfo(journal_id, lesson_id)
+    logger.log(f"Started files proc for: {class_name} - {datetime.now().strftime("%Y-%m-%d %H:%M")}")
+    # time.sleep(1.5)
+    await asyncio.sleep(1.5)
+    d = await GetOrCreateDnevnik(website, login, password)
+    lesson: dict = await d.GetLessonInfo(journal_id, lesson_id)
     if(lesson.get('errorno') is not None): 
-        print('\tlesson not found!')
+        logger.warn('\tlesson not found!')
         return
     files = lesson['files']
-    #print('Post processing files....')
     if(len(files) == 0): 
-        print('\tNo files found!')
+        logger.log('\tNo files found!')
         return
-    print("\tDetected files, starting downloading...")
+    logger.info("\tDetected files, starting downloading...")
     for i in files:
         file_id = i['id']
         file_name:str = i['name']
@@ -500,7 +504,7 @@ async def PostProcessLesson(website, login, password, school, class_name, journa
         cursor.execute("INSERT OR IGNORE INTO files (school, lesson_id, file_id, file_name) VALUES (?, ?, ?, ?)", (school, lesson_id, file_id, file_name))
         off = file_name.rfind('.')
         file_name = f"files/{uuid.uuid4()}{file_name[off:]}"
-        bts = d.DownloadFile(lesson_id, file_id)
+        bts = await d.DownloadFile(lesson_id, file_id)
         sh1 = hashlib.sha1(bts).hexdigest()
         cursor.execute("SELECT file FROM files WHERE hashsum = ?", (sh1,))
         file_al = cursor.fetchone()
@@ -604,19 +608,19 @@ def RandomWord(length):
    c = string.ascii_letters + string.digits
    return ''.join(random.choice(c) for i in range(length))
 
-def GetOrCreateDnevnik(host, login, password) -> Dnevnik:
+async def GetOrCreateDnevnik(host, login, password) -> Dnevnik:
     id = GenerateDID(host, login, password)
     r = dnevniks.get(id)
     if r == None:
-        print("Dnevnik not found, creating...")
+        logger.log("Dnevnik not found, creating...")
         k = Dnevnik(host)
-        k.Login(login, password)
+        await k.Login(login, password)
         dnevniks[id] = k
         return k
     return r
 
-def GetOrCreateDnevnikfromUD(ud:dict) -> Dnevnik:
-    return GetOrCreateDnevnik(ud['school_web'], ud["login"], ud['password'])
+async def GetOrCreateDnevnikfromUD(ud:dict) -> Dnevnik:
+    return await GetOrCreateDnevnik(ud['school_web'], ud["login"], ud['password'])
 
 def GenerateDID(website, login, password) -> str:
     return hashlib.md5(f"{website}!{login}~{password}".encode('utf-8')).hexdigest()
@@ -776,7 +780,7 @@ async def StartProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         if(code.startswith('ycode')):
             code = code[5:]
-            print(f"searching for ycode: {code}")
+            logger.log(f"Searching for ycode: {code}")
             cursor.execute("SELECT school, class_name, alias FROM students WHERE tid = ?", (sender.id,))
             already = cursor.fetchone()
             if(already != None):
@@ -951,7 +955,7 @@ async def MsgProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             Dnevnik(web_site)
         except Exception as e:
-            print(f"Error in new web: {e}")
+            logger.warn(f"Error in new web: {e}")
             await m.edit_text(f"Не удалось установить соединение с сайтом!\nПроверьте адрес или обратитесь к разработчику!\n\nВведите <u><b>новый веб адрес журнала</b></u>:", parse_mode='HTML', reply_markup=InlineKeyboardButton(CANCEL_BUTTON, DEV_BUTTON))
             return
         cursor.execute("UPDATE dnevniks SET website = ? WHERE teacher_tid = ? AND id = ?", (web_site, sender.id, user_d['journal_id']))
@@ -970,12 +974,12 @@ async def MsgProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         host = cursor.fetchone()[0]
         try:
             d = Dnevnik(host)
-            d.Login(login, password)
+            await d.Login(login, password)
         except LoginError:
             await m.edit_text(f"Не удалось войти с предоставленными данными\n\n<i>при возникновении трудностей, обратитесь к разработчику!</i>\n\nВведите <u><b>новый логин и пароль</b></u>:", parse_mode='HTML', reply_markup=InlineKeyboardButton(CANCEL_BUTTON, DEV_BUTTON))
             return
         except Exception as e:
-            print(f"Error in new lp: {e}")
+            logger.warn(f"Error in new lp: {e}")
             await m.edit_text(f"Кажется сайт ЭД недоступен или произошла ошибка, попробуйте снова позже или сообщите разработчику\n\nВведите <u><b>новый логин и пароль</b></u>:", parse_mode='HTML', reply_markup=InlineKeyboardButton(CANCEL_BUTTON, DEV_BUTTON))
             return
         cursor.execute("UPDATE dnevniks SET login = ?, password = ?, is_active = 1 WHERE teacher_tid = ? AND id = ?", (login, password, sender.id, user_d['journal_id']))
@@ -1052,6 +1056,7 @@ async def AnnounceProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if (i % 10 == 0):
                 await upd_msg.edit_text(f"Производиться рассылка {i + 1}/{total}...")
                 time.sleep(4)
+                await asyncio.sleep(4)
             try:
                 await context.bot.send_message(sql_answer[i][0], txt_to_send)
             except: pass
@@ -1085,14 +1090,14 @@ async def AllDataConfirmedProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Mess
         return
     parallels = None
     try:
-        d = GetOrCreateDnevnikfromUD(user_d)
-        parallels = d.GetParallels()
+        d = await GetOrCreateDnevnikfromUD(user_d)
+        parallels = await d.GetParallels()
     except ConnectError:
         await msg.edit_text(f"Кажется вы неправильно указали адресс веб Портала, попробуйте перезаполнить данные или связаться с разработчиком (@possiug)", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Ввести адрес снова", callback_data="enter_web_t")], DEV_BUTTON]))
     except LoginError:
         await msg.edit_text(f"Неверный логин или пароль, введите его заного или обратитесь к разработчику (@possiug)", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Ввести логин снова", callback_data="enter_login_t")], DEV_BUTTON]))
     except Exception as e:
-        print(e)
+        logger.handle_error(e)
         await msg.edit_text(f"Произошла ошибка, возможно вы или предыдущие учителя неправильно указали адрес Веб Портала",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Попробовать снова",callback_data="all_ok_tr")], DEV_BUTTON, [InlineKeyboardButton("Изменить адрес", callback_data="enter_web_t")] if user_d.get("is_new_school", False) else []]))
     if(parallels == None): return
     user_d["classes"] = parallels
@@ -1149,10 +1154,10 @@ async def MainClassTeacher(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message,
             if(x != args[0]): continue
             id_to_retrevie = j.c_id
             
-    d = GetOrCreateDnevnikfromUD(user_d)
+    d = await GetOrCreateDnevnikfromUD(user_d)
     await msg.edit_text(f"Извлекаем список учеников...\nЭто может занять некоторое время...")
     members = {}
-    data = d.GetData(id_to_retrevie)
+    data = await d.GetData(id_to_retrevie)
     for j in data['members']:
         members[j['id']] = j['alias']
     members:dict[int, str] = dict(sorted(members.items(), key=lambda item: item[1]))
@@ -1406,12 +1411,12 @@ async def UpdateFioSProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, c
     if(d_entry == None):
         await msg.reply_html("Не найден электронный дневник для вашего класса, обратитесь к разработчику", reply_markup=DEV_RPMK)
         return
-    d = GetOrCreateDnevnik(d_entry[0],d_entry[1],d_entry[2])
+    d = await GetOrCreateDnevnik(d_entry[0],d_entry[1],d_entry[2])
     clazz = RegExp.match("\\d{1,2}", student[3])
     if not (clazz):
         raise RuntimeError("Редкое явление - ошибка обновления имени: не удалось извлечь класс пользователя")
     clazz = clazz.group()
-    parallels = d.GetParallels()
+    parallels = await d.GetParallels()
     parallel:Parallel = None
     for i in parallels:
         if(not i.name.startswith(clazz)): continue
@@ -1421,7 +1426,7 @@ async def UpdateFioSProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, c
         for i in j.items:
             x = i.name.replace(' ', '')
             if(x != student[3]): continue
-            data = d.GetData(i.c_id)
+            data = await d.GetData(i.c_id)
             for i in data['members']:
                 if(f'{student[1]}' == i['id']):
                     cursor.execute("UPDATE students SET alias = ? WHERE id = ?", (i['alias'], student[0]))
@@ -1553,12 +1558,52 @@ async def CallbackProc(u: Update, c: ContextTypes.DEFAULT_TYPE):
 async def ErrorProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     error = context.error
-    print(f"Error occured: {error} while proccessing message({msg})")
+    logger.error(f"Error occured: {error} while proccessing message({msg})")
     if(msg != None):
         try:
             await msg.reply_html(f"<b>Произошла непредвиденная ошибка!</b>\n\nСообщите об этом инциденте разработчику: @possiug\n\n<tg-spoiler><i>Мы надеемся, что все будет хорошо</i></tg-spoiler>\n\nИнформация об ошибке:\n<tg-spoiler><i>{HTMLescape(error.__str__())}</i></tg-spoiler>", reply_markup=DEV_CLOSE_RPMK)
         except Exception as e:
-            print(f"cannnot send error msg: {e}")
+            logger.error(f"cannnot send error msg: {e}")
+
+
+
+async def Main():
+    global application, is_active, logger
+    logger = LG("Main", True)
+    PrepareDB()
+    logger.log(f"Preparing bot...")
+    application = ApplicationBuilder().token(BOT_TOKEN).build()   
+
+    application.add_handler(CommandHandler("menu", MenuProc, block=False))
+    application.add_handler(CommandHandler("profile", ProfileProc, block=False))
+    application.add_handler(CommandHandler("status", StatusProc, block=False))
+    application.add_handler(CommandHandler("admin", AdminProc, block=False))
+    application.add_handler(CommandHandler("announce", AnnounceProc, block=False))
+    application.add_handler(CommandHandler("start", StartProc, block=False))
+    application.add_handler(CommandHandler("dz", HomeWorkCMDProc, block=False))
+    application.add_handler(CommandHandler("app", AppCMDProc, block=False))
+    application.add_handler(CommandHandler("donate", DonateProc, block=False))
+    application.add_handler(CommandHandler("marks", MarksCMDProc, block=False))
+    application.add_handler(MessageHandler(filters.ALL, MsgProc, block=False))
+    application.add_handler(CallbackQueryHandler(CallbackProc, block=False))
+    application.add_error_handler(ErrorProc, block=False)
+    is_active = True
+    
+    logger.info("Starting")
+    try:
+        await application.initialize()
+        await application.updater.start_polling()
+        await application.start()
+        await mainLoop()
+        await application.updater.stop()
+        await application.stop()
+        await application.shutdown()
+        # application.run_polling()
+    except: pass
+    finally:
+        connection.commit()
+        connection.close()
+    is_active = False
 
 
 
@@ -1599,38 +1644,7 @@ CLB_COMMANDS = {
     "token": TokenProc
 }
 #endregion
-print(f"Preparing DB...")
-PrepareDB()
+
 
 if (__name__ == '__main__'):
-    print("Preparing bot...")
-    application = ApplicationBuilder().token(BOT_TOKEN).build()   
-
-    application.add_handler(CommandHandler("menu", MenuProc))
-    application.add_handler(CommandHandler("profile", ProfileProc))
-    application.add_handler(CommandHandler("status", StatusProc))
-    application.add_handler(CommandHandler("admin", AdminProc))
-    application.add_handler(CommandHandler("announce", AnnounceProc))
-    application.add_handler(CommandHandler("start", StartProc))
-    application.add_handler(CommandHandler("dz", HomeWorkCMDProc))
-    application.add_handler(CommandHandler("app", AppCMDProc))
-    application.add_handler(CommandHandler("donate", DonateProc))
-    application.add_handler(CommandHandler("marks", MarksCMDProc))
-    application.add_handler(MessageHandler(filters.ALL, MsgProc))
-    application.add_handler(CallbackQueryHandler(CallbackProc))
-    application.add_error_handler(ErrorProc)
-    is_active = True
-    print("Starting main loop...")
-    # asyncio.run(mainLoop())
-    thr = threading.Thread(target=asyncio.run, args=(mainLoop(),),daemon=True)
-    thr.start()
-    # asyncio.run(Loop())
-    #exit()
-    # input()
-    try:
-        application.run_polling()
-    except: pass
-    finally:
-        connection.commit()
-        connection.close()
-    is_active = False
+    asyncio.run(Main())
