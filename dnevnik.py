@@ -8,23 +8,19 @@ from dnevnik_types import *
 from greate_logger import Logger as LG
 
 async def get(url, cookies, timeout):
-    try:
-        async with aiohttp.ClientSession(cookies=cookies, timeout=ClientTimeout(total=timeout)) as session:
-            async with session.get(url) as response:
-                response.raise_for_status()
-                return await response.json()
-    except Exception as e:
-        print(f"EERRRO IN AIOHTTP! {e}")
+    async with aiohttp.ClientSession(cookies=cookies, timeout=ClientTimeout(total=timeout)) as session:
+        async with session.get(url) as response:
+            response.raise_for_status()
+            return await response.json()
 
 
 async def download(url, cookies, timeout):
-    try:
-        async with aiohttp.ClientSession(cookies=cookies, timeout=ClientTimeout(total=timeout)) as session:
-            async with session.get(url) as response:
-                response.raise_for_status()
-                return await response.content.read()
-    except Exception as e:
-        print(f"EERRRO IN AIOHTTP! {e}")
+    
+    async with aiohttp.ClientSession(cookies=cookies, timeout=ClientTimeout(total=timeout)) as session:
+        async with session.get(url) as response:
+            response.raise_for_status()
+            return await response.content.read()
+    
 
 
 class Dnevnik:
@@ -89,7 +85,7 @@ class Dnevnik:
 
     async def DownloadFile(self, lesson_id, file_id) -> bytes:
         try:
-            res = await self._get_request_(f"/webservice/app.cj/execute?action=fileget&lesson_id={lesson_id}&id={file_id}")
+            res = await self._download_request_(f"/webservice/app.cj/execute?action=fileget&lesson_id={lesson_id}&id={file_id}")
             return res
         except Exception as e: 
             raise RuntimeError(f"Error in get file: {lesson_id}-{file_id} ex: {e}")

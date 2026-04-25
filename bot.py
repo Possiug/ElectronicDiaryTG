@@ -5,7 +5,7 @@ from dnevnik import Dnevnik
 from dnevnik_types import *
 from greate_logger import Logger as LG
 import string
-import threading
+from anti_spam import AntiSpam
 import random
 import urllib.parse
 import hashlib
@@ -27,6 +27,7 @@ DB_FILENAME = 'ed.db'
 
 connection = sqlite3.connect(DB_FILENAME, check_same_thread=False)
 cursor = connection.cursor()
+spam_protector = AntiSpam()
 
 
 class UStates:
@@ -237,11 +238,13 @@ async def mainLoop():
             if not (is_active): 
                 logger.info("main loop falling down")
                 exit()
-            if(time_to_sleep%10 == 0):  
+            if(time_to_sleep % 10 == 0):  
                 try:
                     await EventProc()
-                except: pass
+                except Exception as e: 
+                    logger.handle_error(e)
         await UpdateData()
+
 async def UpdateData():
     cursor.execute("SELECT id, school, class_name, website, login, password, teacher_tid FROM dnevniks WHERE is_active = 1")
     sql_answer = cursor.fetchall()
@@ -486,35 +489,37 @@ async def PostProcessLesson(website, login, password, school, class_name, journa
     logger.log(f"Started files proc for: {class_name} - {datetime.now().strftime("%Y-%m-%d %H:%M")}")
     # time.sleep(1.5)
     await asyncio.sleep(1.5)
-    d = await GetOrCreateDnevnik(website, login, password)
-    lesson: dict = await d.GetLessonInfo(journal_id, lesson_id)
-    if(lesson.get('errorno') is not None): 
-        logger.warn('\tlesson not found!')
-        return
-    files = lesson['files']
-    if(len(files) == 0): 
-        logger.log('\tNo files found!')
-        return
-    logger.info("\tDetected files, starting downloading...")
-    for i in files:
-        file_id = i['id']
-        file_name:str = i['name']
-        cursor.execute("SELECT id FROM files WHERE school = ? AND file_id = ? AND file IS NOT NULL", (school, file_id))
-        if(cursor.fetchone()): continue
-        cursor.execute("INSERT OR IGNORE INTO files (school, lesson_id, file_id, file_name) VALUES (?, ?, ?, ?)", (school, lesson_id, file_id, file_name))
-        off = file_name.rfind('.')
-        file_name = f"files/{uuid.uuid4()}{file_name[off:]}"
-        bts = await d.DownloadFile(lesson_id, file_id)
-        sh1 = hashlib.sha1(bts).hexdigest()
-        cursor.execute("SELECT file FROM files WHERE hashsum = ?", (sh1,))
-        file_al = cursor.fetchone()
-        if(file_al):
-            file_name = file_al[0]
-        else:
-            with open(file_name, 'wb') as f:
-                f.write(bts)
-        cursor.execute("UPDATE files SET file = ?, hashsum = ? WHERE school = ? AND file_id = ?", (file_name, sh1, school, file_id))
-
+    try:
+        d = await GetOrCreateDnevnik(website, login, password)
+        lesson: dict = await d.GetLessonInfo(journal_id, lesson_id)
+        if(lesson.get('errorno') is not None): 
+            logger.warn('\tlesson not found!')
+            return
+        files = lesson['files']
+        if(len(files) == 0): 
+            logger.log('\tNo files found!')
+            return
+        logger.info("\tDetected files, starting downloading...")
+        for i in files:
+            file_id = i['id']
+            file_name:str = i['name']
+            cursor.execute("SELECT id FROM files WHERE school = ? AND file_id = ? AND file IS NOT NULL", (school, file_id))
+            if(cursor.fetchone()): continue
+            cursor.execute("INSERT OR IGNORE INTO files (school, lesson_id, file_id, file_name) VALUES (?, ?, ?, ?)", (school, lesson_id, file_id, file_name))
+            off = file_name.rfind('.')
+            file_name = f"files/{uuid.uuid4()}{file_name[off:]}"
+            bts = await d.DownloadFile(lesson_id, file_id)
+            sh1 = hashlib.sha1(bts).hexdigest()
+            cursor.execute("SELECT file FROM files WHERE hashsum = ?", (sh1,))
+            file_al = cursor.fetchone()
+            if(file_al):
+                file_name = file_al[0]
+            else:
+                with open(file_name, 'wb') as f:
+                    f.write(bts)
+            cursor.execute("UPDATE files SET file = ?, hashsum = ? WHERE school = ? AND file_id = ?", (file_name, sh1, school, file_id))
+    except Exception as e:
+        logger.warn(f"Exception while post processing: {e}")
 
 async def SendLongMsg(bot:ExtBot, chatid:int, text:str, reply_to:int|None = None):
     if len(text)>4096:
@@ -522,7 +527,6 @@ async def SendLongMsg(bot:ExtBot, chatid:int, text:str, reply_to:int|None = None
             await bot.send_message(chat_id=chatid, text=text[i*4096:(i+1)*4096], reply_to_message_id=reply_to, parse_mode='HTML')
     else:       
         return await bot.send_message(chat_id=chatid, text=text, reply_to_message_id=reply_to, parse_mode='HTML')
-
 
 async def StartCommandProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
@@ -768,7 +772,7 @@ def GetHTMLSubjectHomework(school, class_name, subject_shr, student_id, limit = 
 
 
 
-
+@spam_protector.spam_protect_command
 async def StartProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     sender = update.effective_sender
@@ -796,6 +800,7 @@ async def StartProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.reply_html("Добро пожаловать в бота!\nБот предоставляет доступ к вашим оценкам и дз без госуслуг и сложной авторизации, прямо в телеграмме (или на сайте по команде /app)\n\nПоблагодарить разработчика: /donate\nУ бота открытый исходный <a href='https://github.com/Possiug/ElectronicDiaryTG'>код</a>!\nБуду раз звездочкам на гитхабе :)\n\nСоздано @possiug для всех\nСайт написан: @rtroyanchi\nАвтор идеи: @isichmelili\nАватарка найдена: @MauzeS_paw\nЧтобы начать, выберите свою роль:",reply_markup=ROLES_RPMK)
 
 
+@spam_protector.spam_protect_command
 async def ProfileProc(update: Update, context: ContextTypes.DEFAULT_TYPE, edit = False):
     msg = update.effective_message
     sender = update.effective_sender
@@ -820,6 +825,8 @@ async def ProfileProc(update: Update, context: ContextTypes.DEFAULT_TYPE, edit =
     else:
         await msg.reply_html(text, reply_markup=rpmk)
     
+
+@spam_protector.spam_protect_command
 async def StatusProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     msg = update.effective_message
@@ -837,10 +844,13 @@ async def StatusProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.reply_html(text)
 
 
+@spam_protector.spam_protect_command
 async def DonateProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     await msg.reply_html("Вы можете отправить денежную благодарность по <a href=\"https://www.donationalerts.com/r/possiug\">ссылке</a>\n")
 
+
+@spam_protector.spam_protect_command
 async def HomeWorkCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     msg = update.effective_message
@@ -852,6 +862,8 @@ async def HomeWorkCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await chat.send_message(GetFullHomework(*student), parse_mode='HTML', disable_web_page_preview=True, reply_markup=CLOSE_RPMK)
 
+
+@spam_protector.spam_protect_command
 async def AppCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     msg = update.effective_message
@@ -865,6 +877,8 @@ async def AppCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     app_download = f"{WEB_APP_URL}/download/android"
     await msg.reply_text(f"Электронный дневник так же доступен на сайте или в приложение для Android!\n<b>Откройте ссылку для скачивания в браузере!</b>\n\nНЕ ПЕРЕСЫЛАЙТЕ ЭТИ ДАННЫЕ, они дает доступ к вашим оценкам! Их можно сбросить в профиле /profile\n\n<a href=\"{url}\">Cайт</a>\n\n<a href=\"{app_download}\">Android приложение</a>", parse_mode='HTML')
 
+
+@spam_protector.spam_protect_command
 async def MarksCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     msg = update.effective_message
@@ -877,6 +891,7 @@ async def MarksCMDProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await chat.send_message(GetFullMarks(*student), parse_mode='HTML', disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(text="Другие периоды", callback_data="show_choose_term_s")], CLOSE_BUTTON]))
 
 
+@spam_protector.spam_protect_command
 async def MsgProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global users_data
     global users_state
@@ -1001,6 +1016,7 @@ async def MsgProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pass
 
 
+@spam_protector.spam_protect_command
 async def MenuProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     chat = update.effective_chat
@@ -1042,6 +1058,8 @@ async def AdminProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await SendLongMsg(context.bot, chat.id, r)
 
+
+@spam_protector.spam_protect_command
 async def AnnounceProc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     chat = update.effective_chat
@@ -1548,6 +1566,7 @@ async def TokenProc(u: Update, c: ContextTypes.DEFAULT_TYPE, msg:Message, chat:C
 #endregion
 
 
+@spam_protector.spam_protect_command
 async def CallbackProc(u: Update, c: ContextTypes.DEFAULT_TYPE):
     await u.callback_query.answer()
     data = u.callback_query.data
