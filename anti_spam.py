@@ -17,7 +17,7 @@ class AntiSpam:
             user_id = user_id.id
             ctime = itime()
 
-            tmp = self.users.get(user_id, {"penalty": 0, "last_active": itime()})
+            tmp = self.users.get(user_id, {"penalty": 0, "last_active": itime(), "warned": False})
             delta = ctime - tmp["last_active"]
             
             if (delta < 2):
@@ -32,12 +32,15 @@ class AntiSpam:
                 tmp["penalty"] -= 2
 
             
-            self.users[user_id] = tmp
             tmp['last_active'] = ctime
-            if (tmp["penalty"] > 6):
-                return
-            
-            await func(update, context, *args, **kwargs)
+            if (tmp["penalty"] <= 6):
+                await func(update, context, *args, **kwargs)
+                tmp["warned"] = False
+            else:
+                if (not tmp["warned"]):
+                    await update.effective_message.reply_text("Зафиксирован спам, оправка сообщений будет ограничена для вас!")
+                    tmp["warned"] = True
+            self.users[user_id] = tmp
     
         return wrapper
 
