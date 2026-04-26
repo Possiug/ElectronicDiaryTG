@@ -25,13 +25,12 @@ class AntiSpam:
             elif (delta > 60):
                 tmp["penalty"] = 0
             elif (delta > 10):
-                tmp["penalty"] = max(0, tmp["penalty"] - 5 - delta // 10)
+                tmp["penalty"] = max(0, tmp["penalty"] - 4)
             elif (delta < 5):
-                tmp["penalty"] -= 1
+                tmp["penalty"] = max(0, tmp["penalty"] - 1)
             else:
-                tmp["penalty"] -= 2
+                tmp["penalty"] = max(0, tmp["penalty"] - 2)
 
-            
             tmp['last_active'] = ctime
             if (tmp["penalty"] <= 6):
                 await func(update, context, *args, **kwargs)
