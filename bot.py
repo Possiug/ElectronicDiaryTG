@@ -667,19 +667,17 @@ def GetFullHomework(student_id, school, class_name):
         return text
     raise RuntimeError("Очень странно, но дз не вмещается в одно сообщение, а разработчик не придумал что с этим делать")
 
-def GetCurrentTermBound(school:int, class_name:str) -> tuple[str, str]:
-    cursor.execute("SELECT date_from FROM periods WHERE school = ? AND class_name = ? AND date_from <= date('now') ORDER BY date_from DESC LIMIT 1", (school, class_name))
-    date_from = cursor.fetchone()
-    if (date_from is None):
-        date_from = datetime(datetime.now().year, 0, 0).strftime("%Y-%m-%d")
+def GetCurrentTermBound(school: int, class_name: str) -> tuple[str, str]:
+    cursor.execute("SELECT date_from, date_to FROM periods WHERE school = ? AND class_name = ? AND date_from <= date('now') ORDER BY date_from DESC LIMIT 1", (school, class_name))
+    sql_answer = cursor.fetchone()
+    date_from = None
+    date_to = None
+    if (sql_answer is None):
+        date_from = datetime(datetime.now().year, 1, 0).strftime("%Y-%m-%d")
+        date_to = datetime(datetime.now().year + 1, 1, 0).strftime("%Y-%m-%d")
     else:
-        date_from = date_from[0]
-    cursor.execute("SELECT date_from FROM periods WHERE school = ? AND class_name = ? AND date_from >= date('now') ORDER BY date_from ASC LIMIT 1", (school, class_name))
-    date_to = cursor.fetchone()
-    if (date_to is None):
-        date_to = datetime.now().strftime("%Y-%m-%d")
-    else:
-        date_to = date_to[0]
+        date_from = sql_answer[0]
+        date_to = sql_answer[1]
     return date_from, date_to
     
 def GetSubjectMarks(student_id, school, class_name, subject_shr, date_from = None, date_to = None) -> str:
